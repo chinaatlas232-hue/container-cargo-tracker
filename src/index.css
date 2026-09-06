@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+/* 1. إعداد الصفحة والتنسيقات لشركة أطلس المحيط */
+.atlas-main {
+    background-color: #0e1117;
+    min-height: 100vh;
+    color: #f8fafc;
+}
+
+/* تنسيق جدول HTML المخصص */
+.custom-html-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    direction: rtl !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #ffffff;
+    color: #000000;
+    margin-bottom: 20px;
+}
+.custom-html-table th {
+    background-color: #0b2239 !important;
+    color: #ffffff !important;
+    text-align: center !important;
+    font-weight: bold !important;
+    padding: 10px 6px !important;
+    border: 1px solid #cbd5e1 !important;
+    font-size: 16px !important;
+}
+.custom-html-table td {
+    text-align: center !important;
+    padding: 8px 6px !important;
+    border: 1px solid #cbd5e1 !important;
+    font-size: 16px !important;
+    color: #1e293b !important;
+    vertical-align: middle !important;
+}
+
+.metric-card {
+    padding: 16px; 
+    border-radius: 12px; 
+    color: white;
+    text-align: center; 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin-bottom: 15px; 
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+.metric-title { 
+    font-size: 14px; 
+    margin-bottom: 6px; 
+    opacity: 0.95; 
+    font-weight: 600; 
+    direction: rtl; 
+    unicode-bidi: embed; 
+}
+.metric-value { 
+    font-size: 20px; 
+    font-weight: bold; 
+}
+
+.atlas-h1 {
+    background-color: #1e293b !important;
+    color: #f8fafc !important;
+    padding: 15px 20px !important;
+    border-radius: 8px !important;
+    margin-bottom: 20px !important;
+    margin-top: 10px !important;
+    text-align: right !important;
+    font-size: 1.5rem !important;
+    font-weight: bold !important;
+}
+
+.atlas-sidebar {
+    background-color: #07151a !important;
+    direction: rtl !important;
+    padding-top: 1rem !important;
+    color: #ffffff !important;
+}
+
+::-webkit-scrollbar {
+    width: 10px !important;
+    height: 10px !important;
+}
+::-webkit-scrollbar-track {
+    background: #f1f5f9 !important;
+    border-radius: 5px !important;
+    margin: 5px !important;
+}
+::-webkit-scrollbar-thumb {
+    background: #f87171 !important;
+    border-radius: 4px !important;
+}
+
+@media print {
+    @page {
+        size: A4 landscape;
+        margin: 5mm !important;
+    }
+    
+    html, body {
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: #ffffff !important;
+        -webkit-print-color-adjust: exact !important;
+    }
+
+    .no-print,
+    .atlas-sidebar,
+    header,
+    iframe {
+        display: none !important;
+        height: 0 !important;
+        max-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    
+    .atlas-main {
+        background-color: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        display: block !important;
+        position: relative !important;
+        color: #000000 !important;
+    }
+
+    .metric-card {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        box-shadow: none !important;
+        border: 1px solid #cbd5e1 !important;
+        margin-bottom: 10px !important;
+    }
+
+    .atlas-h1 {
+        margin-top: 0 !important;
+        margin-bottom: 10px !important;
+        padding: 8px 12px !important;
+        font-size: 14px !important;
+        background-color: #1e293b !important;
+        color: #ffffff !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+    }
+
+    .custom-html-table {
+        width: 100% !important;
+        font-size: 11px !important;
+        border-collapse: collapse !important;
+        margin: 0 !important;
+    }
+
+    thead {
+        display: table-row-group !important;
+    }
+
+    tr {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    .custom-html-table th {
+        background-color: #0b2239 !important;
+        color: #ffffff !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        padding: 4px !important;
+        font-size: 11px !important;
+    }
+
+    .custom-html-table td {
+        padding: 3px 2px !important;
+        font-size: 11px !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}

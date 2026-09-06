@@ -1,0 +1,6 @@
+{
+  "name": "Container Cargo Tracker",
+  "description": "تتبع مواقع حاويات الشحن البحري والبري على الخريطة التفاعلية مع التحديث اليومي التلقائي ودعم إدخال الأكواد والبيانات البرمجية",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
