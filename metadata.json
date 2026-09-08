@@ -1,6 +1,6 @@
 {
   "name": "Container Cargo Tracker",
-  "description": "تتبع مواقع حاويات الشحن البحري والبري على الخريطة التفاعلية مع التحديث اليومي التلقائي ودعم إدخال الأكواد والبيانات البرمجية",
+  "description": "منظومة تتبع الحاويات والشحنات وإدارة شيتات تينسنت للشحن البحري والجوي مع لوحة التحكم وكشوفات الكمارك والديون",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

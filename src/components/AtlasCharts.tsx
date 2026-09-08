@@ -46,14 +46,13 @@ interface CustomerTopItem {
   الكود: string;
   '🚢 شحن بحري (RQ)': number;
   '✈️ شحن جوي (RA)': number;
-  '📦 أخرى / عام': number;
   total: number;
 }
 
 export const TopCustomersChart: React.FC<{ data: CustomerTopItem[] }> = ({ data }) => {
   return (
     <div className="w-full bg-[#111827] p-4 rounded-xl border border-slate-700 my-4 text-white">
-      <h4 className="text-base font-bold text-slate-100 mb-3 text-right">
+      <h4 className="text-white font-bold text-[22px] mb-3 text-right">
         أفضل 20 زبون (مقارنة الشحن الجوي والبحري حسب عدد الطرود)
       </h4>
       <div className="h-[520px] w-full" dir="ltr">
@@ -79,7 +78,6 @@ export const TopCustomersChart: React.FC<{ data: CustomerTopItem[] }> = ({ data 
             <Legend wrapperStyle={{ paddingTop: '10px' }} />
             <Bar dataKey="🚢 شحن بحري (RQ)" stackId="a" fill="#38bdf8" name="🚢 شحن بحري (RQ)" />
             <Bar dataKey="✈️ شحن جوي (RA)" stackId="a" fill="#f43f5e" name="✈️ شحن جوي (RA)" />
-            <Bar dataKey="📦 أخرى / عام" stackId="a" fill="#fbbf24" name="📦 أخرى / عام" />
           </BarChart>
         </ResponsiveContainer>
       </div>

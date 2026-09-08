@@ -33,10 +33,9 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     // Add Zoom control at top left
     L.control.zoom({ position: 'topleft' }).addTo(map);
 
-    // CartoDB Dark Matter tiles (clean, professional, dark maritime look)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      subdomains: 'abcd',
+    // Standard OpenStreetMap tiles (100% free, reliable, no API key watermark)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
     }).addTo(map);
 
@@ -153,6 +152,15 @@ export const MapViewer: React.FC<MapViewerProps> = ({
       const lng = c.currentLocation.coordinates.lng;
       bounds.extend([lat, lng]);
 
+      // Determine shipment prefix (RQ for sea / RA for air)
+      const seqUpper = (c.sequenceNumber || '').toUpperCase().trim();
+      const idUpper = (c.id || '').toUpperCase().trim();
+      const titleUpper = (c.title || '').toUpperCase().trim();
+      const shipmentType = (seqUpper.startsWith('RA') || idUpper.startsWith('RA') || titleUpper.includes('RA'))
+        ? 'RA'
+        : 'RQ';
+      const containerDisplayLabel = `${shipmentType} - ${c.id}`;
+
       const vesselIcon = L.divIcon({
         className: 'custom-vessel-marker',
         html: `
@@ -169,7 +177,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
                 <path d="M12 10V4"/>
                 <path d="m8 8 4-4 4 4"/>
               </svg>
-              <span class="text-[11px] tracking-wide font-mono">${c.id}</span>
+              <span class="text-[11px] tracking-wide font-mono font-bold">${containerDisplayLabel}</span>
               <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-emerald-400 animate-ping'}"></span>
             </div>
             ${
@@ -181,8 +189,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({
             }
           </div>
         `,
-        iconSize: [120, 36],
-        iconAnchor: [60, 18],
+        iconSize: [140, 36],
+        iconAnchor: [70, 18],
       });
 
       const marker = L.marker([lat, lng], { icon: vesselIcon, zIndexOffset: isSelected ? 1000 : 100 })
@@ -193,9 +201,9 @@ export const MapViewer: React.FC<MapViewerProps> = ({
 
       // Popup with detailed snapshot
       marker.bindPopup(`
-        <div class="text-right p-2 text-slate-900 font-sans leading-relaxed" dir="rtl" style="min-width: 200px">
+        <div class="text-right p-2 text-slate-900 font-sans leading-relaxed" dir="rtl" style="min-width: 210px">
           <div class="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-2">
-            <span class="font-mono font-bold text-xs text-blue-600">${c.id}</span>
+            <span class="font-mono font-bold text-xs text-blue-600">${containerDisplayLabel}</span>
             <span class="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-semibold">${c.carrierCode}</span>
           </div>
           <div class="text-xs font-semibold text-slate-800">${c.vesselName}</div>

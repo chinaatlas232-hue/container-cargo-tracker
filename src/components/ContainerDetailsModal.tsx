@@ -16,35 +16,43 @@ export const ContainerDetailsModal: React.FC<ContainerDetailsModalProps> = ({
   if (!container) return null;
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-3xl shadow-2xl overflow-hidden my-6">
+    <div className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-0 md:p-3 overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-none md:rounded-2xl w-screen h-screen max-w-full max-h-full shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/70">
+        <div className="flex items-center justify-between p-4 md:p-5 border-b border-slate-200 bg-slate-50/90 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 border border-blue-700 flex items-center justify-center text-white shadow-sm">
               <Ship className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-blue-600 font-mono">{container.id}</h3>
-                <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-semibold">
+                <h3 className="text-xl font-bold text-blue-700 font-mono tracking-wide">{container.id}</h3>
+                <span className="text-xs px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 font-bold">
                   {container.carrier}
                 </span>
+                {container.sequenceNumber && (
+                  <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-mono font-bold border border-slate-300">
+                    تسلسل: {container.sequenceNumber}
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">{container.title}</p>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">{container.title}</p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+              <span>إغلاق (Esc)</span>
+            </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        <div className="flex-1 p-4 md:p-8 space-y-6 overflow-y-auto">
           {/* Quick Route & Status Bar */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">

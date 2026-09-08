@@ -59,7 +59,13 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
     else nonTotalRows.push(r);
   });
 
-  const allColumns = Object.keys(data[0] || {}).filter((c) => c !== 'التسلسل');
+  // Exclude redundant sequence columns (No.) and excluded tracking columns
+  const allColumns = Object.keys(data[0] || {}).filter((c) => {
+    const lower = c.trim().toLowerCase();
+    if (c === 'التسلسل' || lower === 'no.' || lower === 'no' || lower === 'no .') return false;
+    if (c.includes('التتبع العلمي المباشر')) return false;
+    return true;
+  });
   const codeKey = allColumns.find((c) => ['code', 'الكود', 'كود'].includes(c.trim().toLowerCase()));
   const sponsorKey = allColumns.find((c) => c.includes('كفيل'));
 
@@ -72,7 +78,7 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
 
   return (
     <div className="w-full my-4 overflow-x-auto">
-      {/* Pagination controls if large */}
+      {/* Pagination controls with red buttons */}
       {nonTotalRows.length > rowsPerPage && (
         <div className="no-print flex items-center justify-between bg-slate-800 text-white p-2.5 rounded-t-lg text-sm mb-1 border border-slate-700">
           <div className="text-slate-300">
@@ -82,17 +88,17 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
             <button
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-xs font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white disabled:opacity-40 text-xs font-bold transition-colors cursor-pointer shadow-sm"
             >
               السابق
             </button>
-            <span className="text-xs font-mono font-bold">
+            <span className="text-xs font-mono font-bold px-2">
               صفحة {currentPage} من {totalPages}
             </span>
             <button
               disabled={currentPage >= totalPages}
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-xs font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white disabled:opacity-40 text-xs font-bold transition-colors cursor-pointer shadow-sm"
             >
               التالي
             </button>
@@ -100,7 +106,7 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
         </div>
       )}
 
-      <table className="custom-html-table">
+      <table className="custom-html-table w-full">
         <thead>
           <tr>
             {!isSponsorsPivot && <th>التسلسل</th>}
@@ -162,28 +168,34 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
                   }
 
                   let cellStyle: React.CSSProperties = {};
+                  const isSpecialFinancialCol = ['المجموع', 'الزبون دفع', 'المكتب دفع', 'نقل داخلي'].includes(colStr);
 
                   if (isRowTotal) {
                     cellStyle = { backgroundColor: '#374151', color: '#ffffff', fontWeight: 'bold' };
+                  } else if (isSpecialFinancialCol) {
+                    // Very light orange background (bg-orange-50) with white text numbers
+                    cellStyle = { backgroundColor: '#fff7ed', color: '#ffffff', fontWeight: 'bold' };
                   } else {
                     if (isCodeDuplicated && col === codeKey) {
-                      cellStyle = { backgroundColor: '#fef08a', color: '#713f12', fontWeight: 'bold' };
+                      cellStyle = { backgroundColor: '#fefce8', color: '#713f12', fontWeight: 'bold' };
                     } else if (isSponsorsPivot) {
-                      cellStyle = { backgroundColor: '#fce7f3', color: '#831843', fontWeight: 'bold' };
+                      cellStyle = { backgroundColor: '#fdf2f8', color: '#9d174d', fontWeight: 'bold' };
                       if (colIdx < 2) {
-                        cellStyle = { backgroundColor: '#fed7aa', color: '#7c2d12', fontWeight: 'bold' };
+                        cellStyle = { backgroundColor: '#ffedd5', color: '#9a3412', fontWeight: 'bold' };
                       }
                     } else {
                       if (numericVal !== null && numericVal > 0 && colStr !== 'التسلسل') {
-                        cellStyle = { backgroundColor: '#fbcfe8', color: '#831843', fontWeight: 'bold' };
+                        // Lightest pastel pink (bg-pink-50)
+                        cellStyle = { backgroundColor: '#fdf2f8', color: '#9d174d', fontWeight: 'bold' };
                       } else if (isNotArrived) {
-                        cellStyle = { backgroundColor: '#fef08a', color: '#713f12' };
+                        // Lightest pastel yellow (bg-yellow-50)
+                        cellStyle = { backgroundColor: '#fefce8', color: '#713f12' };
                         if (['رقم الحاوية', sponsorKey].includes(colStr)) {
                           cellStyle.fontWeight = 'bold';
                         }
                       } else {
                         if (['رقم الحاوية', sponsorKey].includes(colStr) && valStr && valStr !== '-') {
-                          cellStyle = { backgroundColor: '#bbf7d0', color: '#065f46', fontWeight: 'bold' };
+                          cellStyle = { backgroundColor: '#f0fdf4', color: '#166534', fontWeight: 'bold' };
                         }
                       }
                     }
@@ -195,18 +207,11 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
                   if (val === null || val === undefined || valStr === '' || valStr.toLowerCase() === 'nan') {
                     formattedVal = '-';
                   } else if (['رقم الحاوية', 'رقم الحاويات'].includes(colStr) && valStr && valStr !== '-' && !isRowTotal) {
+                    // Static text only (no link/button) as requested
                     formattedVal = (
-                      <button
-                        type="button"
-                        onClick={() => onContainerClick && onContainerClick(valStr)}
-                        title={`عرض وتتبع مسار الحاوية ${valStr} مباشرة على خريطة التتبع`}
-                        className="inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white px-2.5 py-1 rounded shadow-sm text-xs font-bold transition-all cursor-pointer hover:scale-105 border border-blue-400/30"
-                      >
-                        <span className="font-mono tracking-wide">{valStr}</span>
-                        <span className="text-[10px] bg-blue-800/90 text-blue-100 px-1 py-0.5 rounded flex items-center gap-0.5">
-                          🗺️ الخريطة
-                        </span>
-                      </button>
+                      <span className="font-mono font-bold text-slate-800 text-xs tracking-wide">
+                        {valStr}
+                      </span>
                     );
                   } else if (numericVal !== null) {
                     const isCurrencyCol = [
@@ -218,11 +223,13 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
                       'الاستحصالات',
                       'متبقي',
                       'المتبقي',
+                      'نقل داخلي',
                     ].some((kw) => colStr.includes(kw));
 
+                    let rawFormattedNum = '';
                     if (isCurrencyCol || isSponsorsPivot) {
-                      if (['المجموع', 'الزبون دفع', 'المكتب دفع'].includes(colStr)) {
-                        formattedVal = Number.isInteger(numericVal)
+                      if (['المجموع', 'الزبون دفع', 'المكتب دفع', 'نقل داخلي'].includes(colStr)) {
+                        rawFormattedNum = Number.isInteger(numericVal)
                           ? numericVal.toLocaleString('en-US')
                           : numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                       } else if (
@@ -231,27 +238,38 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
                         valStr.includes('¥') ||
                         (isSponsorsPivot && colStr.includes('الزبون دفع'))
                       ) {
-                        formattedVal = `¥${numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        rawFormattedNum = `¥${numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                       } else if (
                         isSponsorsPivot &&
                         ['سعر البيع', 'مبلغ الجمرك', 'متبقي حقيقي'].some((k) => colStr.includes(k))
                       ) {
-                        formattedVal = `$ ${numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        rawFormattedNum = `$ ${numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                       } else if (isSponsorsPivot && colStr.includes('مجموع الكارتون')) {
-                        formattedVal = Number.isInteger(numericVal)
+                        rawFormattedNum = Number.isInteger(numericVal)
                           ? numericVal.toLocaleString('en-US')
                           : numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                       } else if (isSponsorsPivot) {
-                        formattedVal = Number.isInteger(numericVal)
+                        rawFormattedNum = Number.isInteger(numericVal)
                           ? numericVal.toLocaleString('en-US')
                           : numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                       } else {
-                        formattedVal = `$${numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        rawFormattedNum = `$${numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                       }
                     } else {
-                      formattedVal = Number.isInteger(numericVal)
+                      rawFormattedNum = Number.isInteger(numericVal)
                         ? numericVal.toLocaleString('en-US')
                         : numericVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    }
+
+                    // For financial columns: explicit white font inside orange badge on light orange background
+                    if (isSpecialFinancialCol && !isRowTotal) {
+                      formattedVal = (
+                        <span className="inline-block bg-amber-600 text-white font-bold font-mono px-2 py-0.5 rounded shadow-xs text-xs">
+                          {rawFormattedNum}
+                        </span>
+                      );
+                    } else {
+                      formattedVal = rawFormattedNum;
                     }
                   }
 

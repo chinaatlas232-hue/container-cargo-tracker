@@ -30,14 +30,24 @@ export const ContainerCard: React.FC<ContainerCardProps> = ({
     }
   };
 
+  const status = container.currentLocation.status;
+  const isInPort = status === 'In Port' || status === 'Delivered' || container.progressPercent >= 100;
+
+  // Background color strictly based on Status:
+  // - In Port: very light green (bg-emerald-50)
+  // - In Transit / At Sea: very light yellow (bg-amber-50)
+  const statusBgClass = isInPort
+    ? 'bg-emerald-50 hover:bg-emerald-100/70 border-emerald-300'
+    : 'bg-amber-50 hover:bg-amber-100/70 border-amber-300';
+
   return (
     <div
       id={`container-card-${container.id}`}
       onClick={() => onSelect(container)}
-      className={`group relative p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
+      className={`group relative p-4 rounded-xl border transition-all duration-200 cursor-pointer ${statusBgClass} ${
         isSelected
-          ? 'bg-blue-50/50 border-blue-600 shadow-md ring-2 ring-blue-500/20'
-          : 'bg-white hover:bg-slate-50/80 border-slate-200 hover:border-slate-300 shadow-sm'
+          ? 'ring-2 ring-blue-600 border-blue-600 shadow-md'
+          : 'shadow-sm'
       }`}
     >
       {/* Top row: ID, Carrier, and Status */}

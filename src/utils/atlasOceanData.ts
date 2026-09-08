@@ -147,6 +147,9 @@ export async function fetchAtlasData(): Promise<{
         item['Client Paid'] = item['الزبون دفع'];
         item['المكتب دفع'] = cleanNumeric(item['المكتب دفع'] || item['Office Paid']);
         item['Office Paid'] = item['المكتب دفع'];
+        item['نقل داخلي'] = cleanNumeric(item['نقل داخلي']);
+        item['%'] = cleanNumeric(item['%']) || 6.8;
+        item['قيمة الفاتورة بالدولار'] = cleanNumeric(item['قيمة الفاتورة بالدولار']);
         item['سعر البيع'] = cleanNumeric(item['سعر البيع']);
         item['مبلغ الجمرك'] = cleanNumeric(item['مبلغ الجمرك']);
         item['قيمة الاستحصالات'] = cleanNumeric(item['قيمة الاستحصالات']);

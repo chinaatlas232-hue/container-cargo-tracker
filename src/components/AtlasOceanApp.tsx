@@ -15,10 +15,13 @@ import {
 import { Container } from '../types';
 import { MapViewer } from './MapViewer';
 import { ContainerDetailsModal } from './ContainerDetailsModal';
+import { YardInventoryModal } from './YardInventoryModal';
+import { TencentSheetsSection } from './TencentSheetsSection';
 import {
   RotateCcw,
   Printer,
   FileSpreadsheet,
+  FileText,
   Search,
   CheckCircle2,
   Menu,
@@ -27,6 +30,8 @@ import {
   Save,
   MapPin,
   Ship,
+  Plane,
+  Radio,
   Sparkles,
   ExternalLink,
 } from 'lucide-react';
@@ -38,24 +43,24 @@ interface AtlasOceanAppProps {
 }
 
 type PageKey =
+  | 'marine_tencent'
+  | 'air_tencent'
   | 'dashboard'
   | 'customs'
   | 'sponsors'
   | 'aging'
   | 'collections'
   | 'tracking'
-  | 'charts'
-  | 'data_entry';
+  | 'charts';
 
-const PAGE_OPTIONS: { id: PageKey; label: string }[] = [
-  { id: 'dashboard', label: 'لوحة التحكم (Dashboard)' },
-  { id: 'customs', label: 'كشف اجور الكمارك' },
-  { id: 'sponsors', label: 'الديون على الكفلاء' },
-  { id: 'aging', label: 'اعمار الديون (Aging Report)' },
-  { id: 'collections', label: 'كمرك الشحنات والاستحصالات' },
-  { id: 'tracking', label: 'تتبع الشحنات الجديد' },
-  { id: 'charts', label: 'الرسوم البيانية' },
-  { id: 'data_entry', label: 'إدخال وتعديل البيانات' },
+const GENERAL_PAGE_OPTIONS: { id: PageKey; label: string }[] = [
+  { id: 'dashboard', label: '📊 لوحة التحكم الشاملة' },
+  { id: 'customs', label: '💰 كشف أجور الكمارك' },
+  { id: 'sponsors', label: '👤📋 الديون على الكفلاء' },
+  { id: 'aging', label: '⏳ أعمار الديون (Aging Report)' },
+  { id: 'collections', label: '🛃 كمرك الشحنات والاستحصالات' },
+  { id: 'tracking', label: '🛰️ تتبع الشحنات الجديد' },
+  { id: 'charts', label: '📈 الرسوم البيانية والتحليلات' },
 ];
 
 export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
@@ -63,7 +68,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
   selectedContainer,
   onSelectContainer,
 }) => {
-  const [currentPage, setCurrentPage] = useState<PageKey>('dashboard');
+  const [currentPage, setCurrentPage] = useState<PageKey>('marine_tencent');
   const [rawData, setRawData] = useState<AtlasRow[]>([]);
   const [trackingData, setTrackingData] = useState<TrackingRow[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -78,13 +83,13 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
   // Mobile sidebar toggle
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  const [selectedMarineSheetId, setSelectedMarineSheetId] = useState<string>('marine-collections');
 
   // Detailed container modal
   const [modalContainer, setModalContainer] = useState<Container | null>(null);
 
-  // Data editor state
-  const [editableRows, setEditableRows] = useState<AtlasRow[]>([]);
-  const [saveSuccessToast, setSaveSuccessToast] = useState<boolean>(false);
+  // Yard Inventory printable modal
+  const [isYardModalOpen, setIsYardModalOpen] = useState<boolean>(false);
 
   // Tracking map view mode
   const [showFullMap, setShowFullMap] = useState<boolean>(false);
@@ -96,7 +101,6 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       const res = await fetchAtlasData();
       if (res.error) setError(res.error);
       setRawData(res.df);
-      setEditableRows(res.df);
       setTrackingData(res.dfTracking);
     } catch (e: any) {
       setError(e?.message || 'خطأ في تحميل البيانات');
@@ -245,7 +249,6 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
     const totalAmountAll = activeViewDf.reduce((acc, r) => acc + (r['المجموع'] || 0), 0);
 
     const defaultCols = [
-      'No.',
       'code',
       'Shipping mark',
       'عدد الكارتون',
@@ -306,7 +309,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
                 onChange={() => setDisplayMode('all')}
                 className="text-blue-600 focus:ring-0"
               />
-              <span>📄 طباعة شامل (عرض الكل)</span>
+              <span>📄 شامل (عرض الكل)</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer text-white">
               <input
@@ -331,62 +334,62 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
           </div>
         </div>
 
-        {/* Metric Cards */}
+        {/* Metric Cards - Soft Pastel Shades */}
         {/* Row 1 (3 columns) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-          <div className="metric-card" style={{ backgroundColor: '#1e3a8a' }}>
-            <div className="metric-title">🚢 عدد الحاويات</div>
-            <div className="metric-value">{uniqueContainers.toLocaleString()}</div>
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 shadow-xs text-center">
+            <div className="text-xs font-semibold text-slate-600 mb-1">🚢 عدد الحاويات</div>
+            <div className="text-2xl font-bold font-mono text-slate-900">{uniqueContainers.toLocaleString()}</div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#0f766e' }}>
-            <div className="metric-title">👥 عدد العملاء</div>
-            <div className="metric-value">{uniqueClients.toLocaleString()}</div>
+          <div className="p-4 rounded-xl border border-teal-200 bg-teal-50 text-teal-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-teal-700 mb-1">👥 عدد العملاء</div>
+            <div className="text-2xl font-bold font-mono text-teal-900">{uniqueClients.toLocaleString()}</div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#b45309' }}>
-            <div className="metric-title">💰 المبلغ الكلي</div>
-            <div className="metric-value">
-              {totalAmountAll.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-amber-700 mb-1">💰 المبلغ الكلي</div>
+            <div className="text-2xl font-bold font-mono text-amber-900">
+              ${totalAmountAll.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
         </div>
 
         {/* Row 2 (4 columns) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-          <div className="metric-card" style={{ backgroundColor: '#1d4ed8' }}>
-            <div className="metric-title">📦 عدد الطلبات</div>
-            <div className="metric-value">{totalOrders.toLocaleString()}</div>
+          <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-blue-700 mb-1">📦 عدد الطلبات</div>
+            <div className="text-xl font-bold font-mono text-blue-900">{totalOrders.toLocaleString()}</div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#b45309' }}>
-            <div className="metric-title">📦 إجمالي عدد الكارتون</div>
-            <div className="metric-value">
+          <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-amber-700 mb-1">📦 إجمالي عدد الكارتون</div>
+            <div className="text-xl font-bold font-mono text-amber-900">
               {totalCtns.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#16a34a' }}>
-            <div className="metric-title">💰 مبالغ دفعت من المكتب</div>
-            <div className="metric-value">
-              {totalOfficePaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-emerald-700 mb-1">💰 مبالغ دفعت من المكتب</div>
+            <div className="text-xl font-bold font-mono text-emerald-900">
+              ${totalOfficePaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#9333ea' }}>
-            <div className="metric-title">👤 مبالغ دفعت من الزبون</div>
-            <div className="metric-value">
-              {totalClientPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="p-3.5 rounded-xl border border-purple-200 bg-purple-50 text-purple-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-purple-700 mb-1">👤 مبالغ دفعت من الزبون</div>
+            <div className="text-xl font-bold font-mono text-purple-900">
+              ${totalClientPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
         </div>
 
         {/* Row 3 (2 columns) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-          <div className="metric-card" style={{ backgroundColor: '#047857' }}>
-            <div className="metric-title">⚖️ إجمالي الوزن (kg)</div>
-            <div className="metric-value">
+          <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-emerald-700 mb-1">⚖️ إجمالي الوزن (kg)</div>
+            <div className="text-xl font-bold font-mono text-emerald-900">
               {totalWeight.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#7c2d12' }}>
-            <div className="metric-title">📐 إجمالي الحجم (m³)</div>
-            <div className="metric-value">
+          <div className="p-3.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-orange-700 mb-1">📐 إجمالي الحجم (m³)</div>
+            <div className="text-xl font-bold font-mono text-orange-900">
               {totalVolume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
@@ -443,15 +446,20 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       .filter((r) => String(r['الكفيل'] || '').includes('لم تصل بعد'))
       .reduce((acc, r) => acc + (r['متبقي حقيقي'] || 0), 0);
 
-    // Group by Code Pivot
-    const codeGrouped = new Map<string, { cartons: number; customs: number; collected: number; remaining: number }>();
+    // Group by Code Pivot with Shipments list
+    const codeGrouped = new Map<
+      string,
+      { cartons: number; customs: number; collected: number; remaining: number; shipments: Set<string> }
+    >();
     customsDf.forEach((r) => {
       const c = String(r['code'] || r['الكود'] || 'غير محدد').trim();
-      const curr = codeGrouped.get(c) || { cartons: 0, customs: 0, collected: 0, remaining: 0 };
+      const curr = codeGrouped.get(c) || { cartons: 0, customs: 0, collected: 0, remaining: 0, shipments: new Set() };
       curr.cartons += r['عدد الكارتون'] || 0;
       curr.customs += r['مبلغ الجمرك'] || 0;
       curr.collected += r['قيمة الاستحصالات'] || 0;
       curr.remaining += r['متبقي حقيقي'] || 0;
+      const sh = String(r['رقم الحاوية'] || '').trim();
+      if (sh && !sh.toLowerCase().includes('total')) curr.shipments.add(sh);
       codeGrouped.set(c, curr);
     });
 
@@ -469,7 +477,8 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
         grandCollected += stats.collected;
         grandRemaining += stats.remaining;
         customsSummaryRows.push({
-          'Row Labels': code,
+          'الكود': code,
+          'رقم الشحنة': Array.from(stats.shipments).join(', ') || '-',
           'Sum of عدد الكارتون': stats.cartons,
           'Sum of مبلغ الجمرك': stats.customs,
           'Sum of قيمة الاستحصالات': stats.collected,
@@ -478,7 +487,8 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       });
 
     customsSummaryRows.push({
-      'Row Labels': 'Grand Total',
+      'الكود': 'Grand Total',
+      'رقم الشحنة': '-',
       'Sum of عدد الكارتون': grandCartons,
       'Sum of مبلغ الجمرك': grandCustoms,
       'Sum of قيمة الاستحصالات': grandCollected,
@@ -503,29 +513,29 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
           </div>
         </div>
 
-        {/* 4 Metric Cards */}
+        {/* 4 Metric Cards - Soft Pastel Shades */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-          <div className="metric-card" style={{ backgroundColor: '#1e3a8a' }}>
-            <div className="metric-title">أجور الجمرك الكلي</div>
-            <div className="metric-value">
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 shadow-xs text-center">
+            <div className="text-xs font-semibold text-slate-600 mb-1">أجور الجمرك الكلي</div>
+            <div className="text-xl font-bold font-mono text-slate-900">
               ${totalCustoms.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#0f766e' }}>
-            <div className="metric-title">إجمالي المتبقي الحقيقي</div>
-            <div className="metric-value">
+          <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-emerald-700 mb-1">إجمالي المتبقي الحقيقي</div>
+            <div className="text-xl font-bold font-mono text-emerald-900">
               ${totalRemaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#16a34a' }}>
-            <div className="metric-title">إجمالي الاستحصالات (المسدد)</div>
-            <div className="metric-value">
+          <div className="p-4 rounded-xl border border-blue-200 bg-blue-50 text-blue-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-blue-700 mb-1">إجمالي الاستحصالات (المسدد)</div>
+            <div className="text-xl font-bold font-mono text-blue-900">
               ${totalCollected.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#dc2626' }}>
-            <div className="metric-title">متبقي (لم تصل بعد)</div>
-            <div className="metric-value">
+          <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-amber-700 mb-1">متبقي (لم تصل بعد)</div>
+            <div className="text-xl font-bold font-mono text-amber-900">
               ${notArrivedRemaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
@@ -879,21 +889,21 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-          <div className="metric-card" style={{ backgroundColor: '#1e3a8a' }}>
-            <div className="metric-title">إجمالي مبالغ الجمرك</div>
-            <div className="metric-value">
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 shadow-xs text-center">
+            <div className="text-xs font-semibold text-slate-600 mb-1">إجمالي مبالغ الجمرك</div>
+            <div className="text-xl font-bold font-mono text-slate-900">
               ${totalCustoms.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#059669' }}>
-            <div className="metric-title">إجمالي الاستحصالات</div>
-            <div className="metric-value">
+          <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-emerald-700 mb-1">إجمالي الاستحصالات</div>
+            <div className="text-xl font-bold font-mono text-emerald-900">
               ${totalCollected.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="metric-card" style={{ backgroundColor: '#d97706' }}>
-            <div className="metric-title">إجمالي المتبقي الحقيقي</div>
-            <div className="metric-value">
+          <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-950 shadow-xs text-center">
+            <div className="text-xs font-semibold text-amber-700 mb-1">إجمالي المتبقي الحقيقي</div>
+            <div className="text-xl font-bold font-mono text-amber-900">
               ${totalRemaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
@@ -926,14 +936,24 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
               ميناء نانشا (GOCT) ➔ العقبة / أم قصر / مرسين
             </span>
           </h3>
-          <button
-            type="button"
-            onClick={() => setShowFullMap(!showFullMap)}
-            className="no-print text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Ship className="w-3.5 h-3.5" />
-            <span>{showFullMap ? 'تصغير الخريطة (Mini Map)' : 'تكبير الخريطة الشاملة (Full Map)'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsYardModalOpen(true)}
+              className="no-print text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>نموذج جرد الساحة</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowFullMap(!showFullMap)}
+              className="no-print text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Ship className="w-3.5 h-3.5" />
+              <span>{showFullMap ? 'تصغير الخريطة (Mini Map)' : 'تكبير الخريطة الشاملة (Full Map)'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Interactive Map Component */}
@@ -990,20 +1010,19 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       'Count of الحاويات': data.containers.size,
     }));
 
-    // Top 20 Customers air vs marine
-    const custMap = new Map<string, { marine: number; air: number; other: number; total: number }>();
+    // Top 20 Customers air vs marine (removed 'أخرى / عام' column as requested)
+    const custMap = new Map<string, { marine: number; air: number; total: number }>();
     filteredDf.forEach((r) => {
       const code = String(r['code'] || r['الكود'] || 'غير محدد').trim();
       const cont = String(r['رقم الحاوية'] || '').toUpperCase();
       const cartons = r['عدد الكارتون'] || 0;
 
       if (!custMap.has(code)) {
-        custMap.set(code, { marine: 0, air: 0, other: 0, total: 0 });
+        custMap.set(code, { marine: 0, air: 0, total: 0 });
       }
       const c = custMap.get(code)!;
-      if (cont.startsWith('RQ')) c.marine += cartons;
-      else if (cont.startsWith('RA')) c.air += cartons;
-      else c.other += cartons;
+      if (cont.startsWith('RA')) c.air += cartons;
+      else c.marine += cartons;
       c.total += cartons;
     });
 
@@ -1012,7 +1031,6 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
         الكود: code,
         '🚢 شحن بحري (RQ)': data.marine,
         '✈️ شحن جوي (RA)': data.air,
-        '📦 أخرى / عام': data.other,
         total: data.total,
       }))
       .sort((a, b) => b.total - a.total)
@@ -1038,130 +1056,8 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
         </h3>
         <TopCustomersChart data={topCustomersForChart} />
 
-        <h4 className="text-sm font-semibold text-slate-400 mb-2">جدول أفضل 20 زبون:</h4>
+        <h4 className="text-white font-bold text-[22px] mb-2">جدول أفضل 20 زبون:</h4>
         <AtlasCustomTable data={topCustomersList} />
-      </div>
-    );
-  };
-
-  /* ========================================================================= */
-  /* 8. DATA ENTRY TAB                                                         */
-  /* ========================================================================= */
-  const renderDataEntry = () => {
-    const handleCellChange = (index: number, key: string, value: any) => {
-      setEditableRows((prev) => {
-        const next = [...prev];
-        next[index] = { ...next[index], [key]: value };
-        return next;
-      });
-    };
-
-    const handleAddNewRow = () => {
-      const newRow: AtlasRow = {
-        'No.': editableRows.length + 1,
-        code: 'NEW_CODE',
-        'Shipping mark': '',
-        'عدد الكارتون': 0,
-        الوزن: 0,
-        حجم: 0,
-        'رقم الحاوية': 'RQ6000',
-        الكفيل: 'جديد',
-        المجموع: 0,
-        'الزبون دفع': 0,
-        'المكتب دفع': 0,
-        'مبلغ الجمرك': 0,
-        'قيمة الاستحصالات': 0,
-        'متبقي حقيقي': 0,
-      };
-      setEditableRows([newRow, ...editableRows]);
-    };
-
-    const handleSave = () => {
-      setRawData(editableRows);
-      setSaveSuccessToast(true);
-      setTimeout(() => setSaveSuccessToast(false), 3500);
-    };
-
-    const columnsToEdit = [
-      'No.',
-      'code',
-      'Shipping mark',
-      'عدد الكارتون',
-      'الوزن',
-      'حجم',
-      'رقم الحاوية',
-      'الكفيل',
-      'المجموع',
-      'الزبون دفع',
-      'المكتب دفع',
-      'مبلغ الجمرك',
-      'قيمة الاستحصالات',
-    ];
-
-    return (
-      <div>
-        <h1 className="atlas-h1">📝 إدخال وتعديل البيانات محلياً</h1>
-        <hr className="border-slate-700 my-4" />
-
-        <p className="text-slate-300 text-sm mb-4">
-          يمكنك تعديل البيانات مباشرة في الجدول أدناه، أو إضافة سجل جديد:
-        </p>
-
-        {saveSuccessToast && (
-          <div className="mb-4 p-3 bg-emerald-900 border border-emerald-500 text-emerald-100 rounded-lg flex items-center gap-2 font-bold text-sm">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-            <span>تم حفظ التغييرات وتحديث بيانات الجلسة بنجاح!</span>
-          </div>
-        )}
-
-        <div className="flex items-center gap-3 mb-4">
-          <button
-            type="button"
-            onClick={handleAddNewRow}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة سجل جديد</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors cursor-pointer"
-          >
-            <Save className="w-4 h-4" />
-            <span>💾 حفظ التغييرات وتحديث العرض</span>
-          </button>
-        </div>
-
-        <div className="overflow-x-auto rounded-lg border border-slate-700 bg-slate-900 max-h-[600px]">
-          <table className="w-full text-xs text-right text-slate-200">
-            <thead className="bg-[#0b2239] text-white font-bold sticky top-0">
-              <tr>
-                {columnsToEdit.map((col) => (
-                  <th key={col} className="p-2 border border-slate-700 text-center">
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {editableRows.slice(0, 100).map((row, rIdx) => (
-                <tr key={rIdx} className="hover:bg-slate-800 border-b border-slate-800">
-                  {columnsToEdit.map((col) => (
-                    <td key={col} className="p-1 border border-slate-800">
-                      <input
-                        type="text"
-                        value={row[col] !== undefined ? row[col] : ''}
-                        onChange={(e) => handleCellChange(rIdx, col, e.target.value)}
-                        className="w-full bg-slate-950/70 border border-slate-700 rounded px-1.5 py-1 text-white text-xs text-center focus:border-blue-500 focus:outline-none"
-                      />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
     );
   };
@@ -1185,130 +1081,221 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
       {/* Sidebar */}
       <aside
-        className={`atlas-sidebar no-print w-full md:w-80 p-4 shrink-0 border-l border-slate-800 ${
-          isSidebarOpen ? 'block' : 'hidden md:block'
+        className={`atlas-sidebar no-print w-full md:w-64 p-3.5 shrink-0 border-l border-slate-800 flex flex-col justify-between ${
+          isSidebarOpen ? 'block' : 'hidden md:flex'
         }`}
       >
-        <div className="flex items-center gap-2 mb-3">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <span>🚢 شركة أطلس المحيط</span>
-          </h2>
-        </div>
-        <hr className="border-slate-800 mb-4" />
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-lg font-black text-white flex items-center gap-2">
+              <span>🚢 شركة أطلس المحيط</span>
+            </h2>
+          </div>
+          <hr className="border-slate-800 mb-3" />
 
-        {/* Reload button matching Streamlit secondary button (red #dc2626) */}
-        <button
-          type="button"
-          onClick={loadAllData}
-          disabled={isLoading}
-          style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }}
-          className="w-full flex items-center justify-center gap-2 text-white font-bold py-2.5 px-4 rounded-lg text-sm mb-5 shadow hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
-        >
-          <RotateCcw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>🔄 تحديث البيانات من جوجل شيت والمنصة</span>
-        </button>
+          {/* Filters */}
+          <div className="mb-4 space-y-3 text-right">
+            <h3 className="text-xs font-bold text-slate-300">🔍 الفلاتر الجانبية</h3>
 
-        {/* Filters */}
-        <div className="mb-5 space-y-3.5 text-right">
-          <h3 className="text-sm font-bold text-slate-200">🔍 الفلاتر الجانبية</h3>
+            {/* Container Select */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                🚢 رقم الحاوية / الشحنة:
+              </label>
+              <select
+                value={selectedContainerFilter}
+                onChange={(e) => setSelectedContainerFilter(e.target.value)}
+                className="w-full bg-white text-slate-900 font-bold text-xs p-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {availableContainers.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Container Select */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              🚢 اختر رقم الحاوية:
-            </label>
-            <select
-              value={selectedContainerFilter}
-              onChange={(e) => setSelectedContainerFilter(e.target.value)}
-              className="w-full bg-white text-black font-semibold text-xs p-2 rounded border border-slate-300 focus:outline-none"
+            {/* Code Select */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                🏷️ كود العميل (Code):
+              </label>
+              <select
+                value={selectedCodeFilter}
+                onChange={(e) => setSelectedCodeFilter(e.target.value)}
+                className="w-full bg-white text-slate-900 font-bold text-xs p-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {availableCodes.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sponsor Select */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                👤 اسم الكفيل:
+              </label>
+              <select
+                value={selectedSponsorFilter}
+                onChange={(e) => setSelectedSponsorFilter(e.target.value)}
+                className="w-full bg-white text-slate-900 font-bold text-xs p-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {availableSponsors.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <hr className="border-slate-800 my-3" />
+
+          {/* Main Section 1: الشحن البحري (Main Sea Freight Section with 3 Dedicated Sheets) */}
+          <div className="mb-3.5 bg-slate-900/90 p-2.5 rounded-xl border border-blue-900/60 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-black text-blue-400 mb-2 px-1">
+              <span className="flex items-center gap-1.5">
+                <Ship className="w-4 h-4 text-blue-400" />
+                <span className="text-sm font-black">الشحن البحري</span>
+              </span>
+              <span className="text-[10px] bg-blue-600/30 text-blue-300 px-1.5 py-0.5 rounded font-mono border border-blue-500/30">
+                3 شيتات حصرية
+              </span>
+            </div>
+
+            <div className="space-y-1">
+              {[
+                { id: 'marine-collections', label: '1. استحصال الشحن البحري', icon: '📑' },
+                { id: 'marine-treasury', label: '2. قاصة البحري', icon: '💼' },
+                { id: 'marine-deposits', label: '3. ايداعات الزبائن للبحري', icon: '📥' },
+              ].map((sub) => {
+                const isSelected = currentPage === 'marine_tencent' && selectedMarineSheetId === sub.id;
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedMarineSheetId(sub.id);
+                      setCurrentPage('marine_tencent');
+                      setIsSidebarOpen(false);
+                    }}
+                    className={`w-full text-right px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-600 text-white shadow-md font-black ring-1 ring-blue-400'
+                        : 'text-slate-200 bg-slate-950/70 hover:bg-slate-800 border border-slate-800/80 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span>{sub.icon}</span>
+                      <span>{sub.label}</span>
+                    </span>
+                    {isSelected && <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Sub Section 2: الشحن الجوي (Sub Air Freight Section directly below) */}
+          <div className="mb-3.5 bg-slate-900/90 p-2.5 rounded-xl border border-rose-900/60 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-black text-rose-400 mb-2 px-1">
+              <span className="flex items-center gap-1.5">
+                <Plane className="w-4 h-4 text-rose-400" />
+                <span className="text-sm font-black">الشحن الجوي</span>
+              </span>
+              <span className="text-[10px] bg-rose-600/30 text-rose-300 px-1.5 py-0.5 rounded font-mono border border-rose-500/30">
+                Tencent Live
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentPage('air_tencent');
+                setIsSidebarOpen(false);
+              }}
+              className={`w-full text-right px-2.5 py-2 rounded-lg text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                currentPage === 'air_tencent'
+                  ? 'bg-rose-600 text-white shadow-md font-black ring-1 ring-rose-400'
+                  : 'text-slate-200 bg-slate-950/70 hover:bg-slate-800 border border-slate-800/80 hover:text-white'
+              }`}
             >
-              {availableContainers.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              <span className="flex items-center gap-1.5">
+                <FileSpreadsheet className="w-3.5 h-3.5 text-rose-300" />
+                <span>شيتات تينسنت الجوية</span>
+              </span>
+              {currentPage === 'air_tencent' && (
+                <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+              )}
+            </button>
           </div>
 
-          {/* Code Select */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              🏷️ اختر الكود (Code):
-            </label>
-            <select
-              value={selectedCodeFilter}
-              onChange={(e) => setSelectedCodeFilter(e.target.value)}
-              className="w-full bg-white text-black font-semibold text-xs p-2 rounded border border-slate-300 focus:outline-none"
-            >
-              {availableCodes.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+          {/* Section 3: General Operational & Financial Reports */}
+          <div className="mb-4">
+            <h3 className="text-xs font-bold text-slate-300 mb-2 px-1">📊 التقارير والإدارة التشغيلية</h3>
+            <div className="space-y-1.5">
+              {GENERAL_PAGE_OPTIONS.map((opt) => {
+                const isActive = currentPage === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setCurrentPage(opt.id);
+                      setIsSidebarOpen(false);
+                    }}
+                    className={`w-full text-right px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between transition-all cursor-pointer shadow-xs ${
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-md font-black ring-1 ring-blue-400'
+                        : 'text-slate-200 bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 hover:text-white'
+                    }`}
+                  >
+                    <span>{opt.label}</span>
+                    {isActive && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Sponsor Select */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              👤 اختر اسم الكفيل:
-            </label>
-            <select
-              value={selectedSponsorFilter}
-              onChange={(e) => setSelectedSponsorFilter(e.target.value)}
-              className="w-full bg-white text-black font-semibold text-xs p-2 rounded border border-slate-300 focus:outline-none"
-            >
-              {availableSponsors.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Button to open Yard Inventory printable report */}
+          <button
+            type="button"
+            onClick={() => setIsYardModalOpen(true)}
+            className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-3 rounded-lg text-xs mb-3 shadow transition-colors cursor-pointer"
+          >
+            <FileText className="w-4 h-4" />
+            <span>📋 نموذج جرد الساحة والمستودع</span>
+          </button>
         </div>
 
-        <hr className="border-slate-800 my-4" />
+        {/* Bottom Section: Reload Button moved to bottom as requested */}
+        <div className="pt-3 border-t border-slate-800 space-y-2">
+          <button
+            type="button"
+            onClick={loadAllData}
+            disabled={isLoading}
+            className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-3 rounded-lg text-xs shadow hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>🔄 تحديث البيانات</span>
+          </button>
 
-        {/* Main Navigation Radio options */}
-        <div className="mb-6">
-          <h3 className="text-sm font-bold text-white mb-2.5">📌 القائمة الرئيسية</h3>
-          <div className="space-y-1.5">
-            {PAGE_OPTIONS.map((opt) => {
-              const isActive = currentPage === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => {
-                    setCurrentPage(opt.id);
-                    setIsSidebarOpen(false);
-                  }}
-                  className={`w-full text-right px-3 py-2 rounded-lg text-sm font-bold flex items-center justify-between transition-colors cursor-pointer ${
-                    isActive
-                      ? 'bg-blue-700 text-white shadow'
-                      : 'text-slate-200 hover:bg-slate-800/80'
-                  }`}
-                >
-                  <span>{opt.label}</span>
-                  {isActive && <span className="w-2 h-2 rounded-full bg-white"></span>}
-                </button>
-              );
-            })}
+          <div className="p-2 rounded bg-slate-900/80 border border-slate-800 text-[10px] text-emerald-400 font-semibold text-center leading-relaxed">
+            متصل بملفات Google Sheets وتينسنت بنجاح ✔️
           </div>
-        </div>
-
-        <hr className="border-slate-800 my-4" />
-        <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 text-[11px] text-emerald-400 font-semibold leading-relaxed">
-          متصل بملفات Google Sheets ومنصة Freightower بنجاح ✔️
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 md:p-6 overflow-y-auto block-container">
+      <main className="flex-1 p-4 md:p-6 overflow-y-auto block-container w-full max-w-full">
         {isLoading && (
           <div className="p-8 text-center bg-slate-900 rounded-xl border border-slate-800 my-4">
             <RotateCcw className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-2" />
-            <div className="text-base font-bold text-white">جاري تحميل بيانات Google Sheets ومنظومة أطلس...</div>
+            <div className="text-base font-bold text-white">جاري تحميل بيانات Google Sheets ومنظومة أطلس وتينسنت...</div>
           </div>
         )}
 
@@ -1320,6 +1307,17 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
         {!isLoading && (
           <>
+            {currentPage === 'marine_tencent' && (
+              <TencentSheetsSection
+                category="marine"
+                allRows={rawData}
+                activeSheetId={selectedMarineSheetId}
+                onSelectSheet={(id) => setSelectedMarineSheetId(id)}
+              />
+            )}
+            {currentPage === 'air_tencent' && (
+              <TencentSheetsSection category="air" allRows={rawData} />
+            )}
             {currentPage === 'dashboard' && renderDashboard()}
             {currentPage === 'customs' && renderCustoms()}
             {currentPage === 'sponsors' && renderSponsors()}
@@ -1327,7 +1325,6 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
             {currentPage === 'collections' && renderCollections()}
             {currentPage === 'tracking' && renderTracking()}
             {currentPage === 'charts' && renderCharts()}
-            {currentPage === 'data_entry' && renderDataEntry()}
           </>
         )}
       </main>
@@ -1337,6 +1334,17 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
         <ContainerDetailsModal
           container={modalContainer}
           onClose={() => setModalContainer(null)}
+        />
+      )}
+
+      {/* Modal for Yard Inventory Print */}
+      {isYardModalOpen && (
+        <YardInventoryModal
+          isOpen={isYardModalOpen}
+          onClose={() => setIsYardModalOpen(false)}
+          availableShipments={availableContainers}
+          initialShipment={selectedContainerFilter}
+          allRows={rawData}
         />
       )}
     </div>
