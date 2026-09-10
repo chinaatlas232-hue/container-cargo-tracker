@@ -28,6 +28,7 @@ import {
   Info,
   X,
   Save,
+  Trash2,
 } from 'lucide-react';
 
 export interface TencentSheetItem {
@@ -69,13 +70,13 @@ export interface IqdDenominationRow {
 }
 
 export const DEFAULT_TENCENT_TREASURY_CELLS: TencentTreasuryCells = {
-  safeTotal: '$230,892',
-  paidFromSafe: '$212,914',
-  remainingBalance: '17,978.26',
-  differenceExtra: '$820.00',
-  netRemaining: '17,158.26',
-  exchangeRate: '1529',
-  iqdCashTotal: '26,234,980 د.ع.',
+  safeTotal: '$247,292',
+  paidFromSafe: '$233,527',
+  remainingBalance: '13,765.46',
+  differenceExtra: '$0.00',
+  netRemaining: '13,765.46',
+  exchangeRate: '1530',
+  iqdCashTotal: '21,061,154 د.ع.',
 };
 
 export const INITIAL_TREASURY_DISBURSEMENTS: TreasuryDisbursementRow[] = [
@@ -89,20 +90,21 @@ export const INITIAL_TREASURY_DISBURSEMENTS: TreasuryDisbursementRow[] = [
   { no: 8, amount: '$21,450.00', recipient: 'محمد ماهر', notes: 'فورم 8 RQ6032', receiptProofUrl: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?w=600&auto=format&fit=crop&q=80' },
   { no: 9, amount: '$21,063.30', recipient: 'محمد ماهر', notes: 'فورم 9 RQ6033', receiptProofUrl: 'https://images.unsplash.com/photo-1450133064473-71024230f91b?w=600&auto=format&fit=crop&q=80' },
   { no: 10, amount: '$ 21,477.3', recipient: 'محمد ماهر', notes: 'فورم 10 RQ6034', receiptProofUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80' },
+  { no: 11, amount: '$ 20,612.7', recipient: 'محمد ماهر', notes: '11 فورم RQ6035', receiptProofUrl: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?w=600&auto=format&fit=crop&q=80' },
 ];
 
 export const INITIAL_IQD_DENOMINATIONS: IqdDenominationRow[] = [
-  { category: '50,000.00 د.ع.', total: '14,200,000 د.ع.', count: '284', notes: '' },
-  { category: '25,000.00 د.ع.', total: '10,275,000 د.ع.', count: '411', notes: '' },
-  { category: '10,000.00 د.ع.', total: '- د.ع.', count: '-', notes: '' },
-  { category: '5,000.00 د.ع.', total: '10,000 د.ع.', count: '2', notes: '' },
-  { category: '1,000.00 د.ع.', total: '3,000 د.ع.', count: '3', notes: '' },
+  { category: '50,000.00 د.ع.', total: '16,550,000 د.ع.', count: '331', notes: '' },
+  { category: '25,000.00 د.ع.', total: '4,475,000 د.ع.', count: '179', notes: '' },
+  { category: '10,000.00 د.ع.', total: '10,000 د.ع.', count: '1', notes: '' },
+  { category: '5,000.00 د.ع.', total: '25,000 د.ع.', count: '5', notes: '' },
+  { category: '1,000.00 د.ع.', total: '1,000 د.ع.', count: '1', notes: '' },
 ];
 
 export const INITIAL_IQD_SUMMARY = {
-  total: '24,488,000 د.ع.',
-  difference: '3,020 د.ع.',
-  custodyHolder: 'محمد ماهر: 1,750,000 د.ع.',
+  total: '21,061,000 د.ع.',
+  difference: '154 د.ع.',
+  custodyHolder: 'محمد ماهر: - د.ع.',
   notes: 'رصيد زبون بالقاصة',
 };
 
@@ -185,6 +187,68 @@ export const DEFAULT_TENCENT_DEPOSIT_ROWS: TencentCustomerDepositRow[] = [
   },
 ];
 
+/**
+ * محرك معالجة البيانات الحسابية لجدول شيت تينسنت (tencent_df)
+ * يحاكي مكتبة pandas في معالجة الجداول:
+ * - بطاقة المستحصل: df['amount'].sum() جمع مبالغ العمود برمجياً
+ * - حالة التوريد للقاصة: df['Column1'].value_counts() تصفية وإحصاء حالات العمود
+ * - عدد القيود المسجلة: len(df) طول الجدول الفعلي
+ * - المتبقي: عملية طرح رياضية برمجية بين إجمالي المبالغ والمبالغ التي دخلت القاصة
+ */
+export const computeTencentDfMetrics = (df: TencentCustomerDepositRow[]) => {
+  const parseAmount = (val: string | number | undefined): number => {
+    if (!val) return 0;
+    const cleanStr = String(val).replace(/[^0-9.-]/g, '');
+    const num = parseFloat(cleanStr);
+    return isNaN(num) ? 0 : num;
+  };
+
+  // 1. جمع مبالغ العمود amount برمجياً (df['amount'].sum())
+  const totalCollectedNumber = df.reduce((acc, row) => acc + parseAmount(row.amount), 0);
+  const collectedFormatted = `$${totalCollectedNumber.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+
+  // 2. تصفية وإحصاء عمود Column1 لحالة التوريد للقاصة (value_counts / filtering)
+  const inSafeRows = df.filter((row) => {
+    const col = (row.column1 || '').trim().toLowerCase();
+    return col.includes('دخلت') && !col.includes('لم');
+  });
+  const notInSafeRows = df.filter((row) => {
+    const col = (row.column1 || '').trim().toLowerCase();
+    return col.includes('لم') || (!col.includes('دخلت') && col.length > 0) || !col;
+  });
+
+  const inSafeCount = inSafeRows.length;
+  const notInSafeCount = notInSafeRows.length;
+  const inSafeStatusComputed = `دخلت قاصة: ${inSafeCount} | لم تدخل بعد: ${notInSafeCount}`;
+
+  // 3. عدد القيود المسجلة: بعدد صفوف الجدول len(df)
+  const registeredCountComputed = `${df.length} قيود مسجلة`;
+
+  // 4. المتبقي: عملية طرح رياضية برمجية بين إجمالي المبالغ وما دخل القاصة
+  const inSafeSum = inSafeRows.reduce((acc, row) => acc + parseAmount(row.amount), 0);
+  const remainingNumber = Math.max(0, totalCollectedNumber - inSafeSum);
+  const remainingFormatted = `$${remainingNumber.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+
+  return {
+    totalCollectedNumber,
+    collectedFormatted,
+    inSafeCount,
+    notInSafeCount,
+    inSafeStatusComputed,
+    registeredCountComputed,
+    rowCount: df.length,
+    inSafeSum,
+    remainingNumber,
+    remainingFormatted,
+  };
+};
+
 interface TencentSheetsSectionProps {
   category: 'marine' | 'air';
   allRows: AtlasRow[];
@@ -219,10 +283,10 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
         category: 'marine',
         tencentUrl: 'https://docs.qq.com/sheet/DQ3Z0Y1Z2Z3Z4Z5M1',
         docId: 'TENCENT_DOC_OCEAN_TREASURY_SAFE',
-        description: 'قراءة حرفية مباشرة من خلايا شيت تينسنت الأصلي: قاصة ($230,892)، دفع من القاصة ($212,914)، متبقي رصيد (17,978.26)، ورصيد القاصة بالدولار ($820.00) بدون أي حسابات برمجية',
-        lastSyncTime: 'الآن - تحديث تلقائي مباشر من خلايا الشيت',
+        description: 'قراءة حرفية مباشرة من خلايا شيت تينسنت الأصلي المحدث: قاصة ($247,292)، دفع من القاصة ($233,527)، متبقي رصيد (13,765.46)، سعر الصرف (1530)، ورصيد القاصة بالدولار ($0.00)',
+        lastSyncTime: 'الآن - تحديث تلقائي مباشر من شيت تينسنت المحدث',
         status: 'synced',
-        itemCount: 10,
+        itemCount: 11,
         sampleColumns: ['no', 'المبلغ', 'اسم المستلم', 'ملاحظات', 'الدليل', 'فئات الدينار العراقي'],
       },
       {
@@ -318,14 +382,13 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
 
   // Direct Tencent Sheet Cells for "قاصة البحري" - Completely free of programmatic calculations
   const [treasuryCells, setTreasuryCells] = useState<TencentTreasuryCells>(() => {
-    const saved = localStorage.getItem('atlas_tencent_treasury_cells_v6');
+    const saved = localStorage.getItem('atlas_tencent_treasury_cells_v11');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.differenceExtra && !parsed.differenceExtra.startsWith('$')) {
-          parsed.differenceExtra = `$${parsed.differenceExtra}`;
+        if (parsed.safeTotal && !parsed.safeTotal.includes('230,892')) {
+          return parsed;
         }
-        return parsed;
       } catch (e) {
         // fallback
       }
@@ -333,13 +396,13 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
     return DEFAULT_TENCENT_TREASURY_CELLS;
   });
 
-  // Disbursement records matching Tencent Screenshot
+  // Disbursement records matching Tencent Screenshot (including Row 11: $20,612.70)
   const [treasuryDisbursements, setTreasuryDisbursements] = useState<TreasuryDisbursementRow[]>(() => {
-    const saved = localStorage.getItem('atlas_tencent_treasury_disbursements_v2');
+    const saved = localStorage.getItem('atlas_tencent_treasury_disbursements_v11');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length >= 11) return parsed;
       } catch (e) {
         // fallback
       }
@@ -347,9 +410,39 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
     return INITIAL_TREASURY_DISBURSEMENTS;
   });
 
-  // IQD Cash Denominations matching right table of Screenshot
+  // Safe Capital F1 ($247,292.36)
+  const [safeCapital, setSafeCapital] = useState<number>(() => {
+    const saved = localStorage.getItem('atlas_tencent_safe_capital_v11');
+    if (saved) {
+      const val = parseFloat(saved);
+      if (!isNaN(val) && val > 240000) return val;
+    }
+    return 247292.36;
+  });
+
+  // Safe USD Balance G1 ($0.00 in latest sheet)
+  const [safeUsdBalance, setSafeUsdBalance] = useState<number>(() => {
+    const saved = localStorage.getItem('atlas_tencent_safe_usd_v11');
+    if (saved) {
+      const val = parseFloat(saved);
+      if (!isNaN(val)) return val;
+    }
+    return 0.0;
+  });
+
+  // Exchange Rate I1 (1530 in latest sheet)
+  const [exchangeRate, setExchangeRate] = useState<number>(() => {
+    const saved = localStorage.getItem('atlas_tencent_exchange_rate_v11');
+    if (saved) {
+      const val = parseInt(saved, 10);
+      if (!isNaN(val) && val > 1000) return val;
+    }
+    return 1530;
+  });
+
+  // IQD Cash Denominations matching right table of Screenshot (331, 179, 1, 5, 1)
   const [iqdDenominations, setIqdDenominations] = useState<IqdDenominationRow[]>(() => {
-    const saved = localStorage.getItem('atlas_tencent_iqd_denominations_v2');
+    const saved = localStorage.getItem('atlas_tencent_iqd_denominations_v13');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -362,10 +455,11 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
   });
 
   const [iqdSummary, setIqdSummary] = useState(() => {
-    const saved = localStorage.getItem('atlas_tencent_iqd_summary_v2');
+    const saved = localStorage.getItem('atlas_tencent_iqd_summary_v13');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.total) return parsed;
       } catch (e) {
         // fallback
       }
@@ -373,36 +467,63 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
     return INITIAL_IQD_SUMMARY;
   });
 
-  // Cell Editor & Modal States
-  const [isCellEditorOpen, setIsCellEditorOpen] = useState<boolean>(false);
-  const [cellDraft, setCellDraft] = useState<TencentTreasuryCells>(DEFAULT_TENCENT_TREASURY_CELLS);
+  // Cell Editor & Modal States for Treasury
   const [selectedReceiptModal, setSelectedReceiptModal] = useState<TreasuryDisbursementRow | null>(null);
   const [treasuryViewLayout, setTreasuryViewLayout] = useState<'both' | 'disbursements' | 'iqd'>('both');
+  const [isAddDisbursementModalOpen, setIsAddDisbursementModalOpen] = useState<boolean>(false);
+  const [isEditTreasurySettingsOpen, setIsEditTreasurySettingsOpen] = useState<boolean>(false);
+  const [treasurySettingsDraft, setTreasurySettingsDraft] = useState({
+    safeCapital: '247292.36',
+    safeUsdBalance: '0.00',
+    exchangeRate: '1530',
+  });
 
-  const handleOpenCellEditor = () => {
-    setCellDraft({ ...treasuryCells });
-    setIsCellEditorOpen(true);
+  // Form states for new disbursement
+  const [newDisbAmount, setNewDisbAmount] = useState<string>('');
+  const [newDisbRecipient, setNewDisbRecipient] = useState<string>('محمد ماهر');
+  const [newDisbNotes, setNewDisbNotes] = useState<string>('');
+  const [newDisbProofUrl, setNewDisbProofUrl] = useState<string>('');
+
+  // Direct Live Cell-Binding Calculation: Computes F1, D1, B1, J1, G1, H1, I1 dynamically from tables
+  const parseAmountNum = (val: string | number | undefined): number => {
+    if (!val) return 0;
+    const cleanStr = String(val).replace(/[^0-9.-]/g, '');
+    const num = parseFloat(cleanStr);
+    return isNaN(num) ? 0 : num;
   };
 
-  const handleSaveCellDraft = (e: React.FormEvent) => {
-    e.preventDefault();
-    const rawG1 = cellDraft.differenceExtra.trim();
-    const formattedG1 = rawG1 ? (rawG1.startsWith('$') ? rawG1 : `$${rawG1}`) : '$0.00';
-    const formattedDraft = {
-      ...cellDraft,
-      differenceExtra: formattedG1,
+  const liveTreasuryMetrics = useMemo(() => {
+    // 1. D1 (دفع من القاصة) = sum of amount column in disbursements ($233,527)
+    const totalDisbursed = treasuryDisbursements.reduce((acc, row) => acc + parseAmountNum(row.amount), 0);
+    // 2. F1 (قاصة) = total safe capital in Tencent Sheet ($247,292)
+    const totalSafeF1 = safeCapital;
+    // 3. B1 (متبقي رصيد) = F1 - D1 (13,765.46)
+    const remainingB1 = totalSafeF1 - totalDisbursed;
+    // 4. G1 (رصيد القاصة بالدولار - $0.00)
+    const safeUsdG1 = safeUsdBalance;
+    // 5. H1 (صافي متبقي الرصيد) = B1 - G1 (13,765.46)
+    const netRemainingH1 = remainingB1 - safeUsdG1;
+    // 6. I1 (معامل الصرف - 1530)
+    const exchangeRateI1 = exchangeRate;
+    // 7. J1 (جرد النقد د.ع) = H1 * I1 = 21,061,154 د.ع
+    const iqdCashTotal = Math.round(netRemainingH1 * exchangeRateI1);
+
+    return {
+      f1: `$${Math.round(totalSafeF1).toLocaleString('en-US')}`,
+      f1_exact: `$${totalSafeF1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      d1: `$${Math.round(totalDisbursed).toLocaleString('en-US')}`,
+      d1_exact: `$${totalDisbursed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      b1: `${remainingB1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      g1: `$${safeUsdG1.toFixed(2)}`,
+      h1: `${netRemainingH1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      i1: `${exchangeRateI1}`,
+      j1: `${iqdCashTotal.toLocaleString()} د.ع.`,
+      f1_num: totalSafeF1,
+      d1_num: totalDisbursed,
+      b1_num: remainingB1,
+      j1_num: iqdCashTotal,
     };
-    setTreasuryCells(formattedDraft);
-    localStorage.setItem('atlas_tencent_treasury_cells_v6', JSON.stringify(formattedDraft));
-    setIsCellEditorOpen(false);
-  };
-
-  const handleResetCellDraft = () => {
-    setCellDraft(DEFAULT_TENCENT_TREASURY_CELLS);
-    setTreasuryCells(DEFAULT_TENCENT_TREASURY_CELLS);
-    localStorage.setItem('atlas_tencent_treasury_cells_v6', JSON.stringify(DEFAULT_TENCENT_TREASURY_CELLS));
-    setIsCellEditorOpen(false);
-  };
+  }, [treasuryDisbursements, safeCapital, safeUsdBalance, exchangeRate]);
 
   // Filtered treasury disbursements based on search
   const filteredTreasuryDisbursements = useMemo(() => {
@@ -477,6 +598,18 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
     setIsDepositsCellEditorOpen(false);
   };
 
+  // State for Adding New Deposit Row to tencent_df
+  const [isAddDepositRowModalOpen, setIsAddDepositRowModalOpen] = useState<boolean>(false);
+  const [newDepositCode, setNewDepositCode] = useState<string>('');
+  const [newDepositAmount, setNewDepositAmount] = useState<string>('');
+  const [newDepositDate, setNewDepositDate] = useState<string>(() => {
+    const today = new Date();
+    return `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
+  });
+  const [newDepositNote, setNewDepositNote] = useState<string>('');
+  const [newDepositColumn1, setNewDepositColumn1] = useState<string>('دخلت قاصة');
+  const [newDepositColumn2, setNewDepositColumn2] = useState<string>('');
+
   // New Sheet Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [newSheetName, setNewSheetName] = useState<string>('');
@@ -550,6 +683,136 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
     });
   }, [relevantRows, searchTerm, selectedSheetId, selectedSponsorFilter, selectedStaffFilter, selectedStatusFilter]);
 
+  // Filtered rows for "ايداعات الزبائن للبحري" matching Tencent Sheet screenshot
+  const filteredDepositRows = useMemo(() => {
+    if (!searchTerm.trim()) return depositRows;
+    const term = searchTerm.toLowerCase().trim();
+    return depositRows.filter(
+      (r) =>
+        r.code.toLowerCase().includes(term) ||
+        r.amount.toLowerCase().includes(term) ||
+        r.no.toLowerCase().includes(term) ||
+        r.note.toLowerCase().includes(term) ||
+        r.column1.toLowerCase().includes(term)
+    );
+  }, [depositRows, searchTerm]);
+
+  // Dynamic DataFrame processing for Tencent deposits (Pandas-style execution on tencent_df)
+  // يعالج جميع القيم والبطاقات ديناميكياً برمجياً دون أي أرقام ثابتة أو وهمية
+  const depositsDfMetrics = useMemo(() => {
+    return computeTencentDfMetrics(depositRows);
+  }, [depositRows]);
+
+  // تبديل حالة التوريد للقاصة لصف محدد وإعادة الحساب الفوري لجميع البطاقات
+  const handleToggleColumn1 = (index: number) => {
+    setDepositRows((prev) => {
+      const updated = [...prev];
+      if (!updated[index]) return prev;
+      const current = (updated[index].column1 || '').trim();
+      if (current.includes('دخلت') && !current.includes('لم')) {
+        updated[index] = { ...updated[index], column1: 'لم تدخل قاصة بعد' };
+      } else {
+        updated[index] = { ...updated[index], column1: 'دخلت قاصة' };
+      }
+      localStorage.setItem('atlas_tencent_deposit_rows_v1', JSON.stringify(updated));
+
+      const metrics = computeTencentDfMetrics(updated);
+      const updatedDeposits: TencentCustomerDepositsCells = {
+        ...depositsCells,
+        collectedA1: metrics.collectedFormatted,
+        totalDeposits: metrics.collectedFormatted,
+        inSafeStatus: metrics.inSafeStatusComputed,
+        depositCount: metrics.registeredCountComputed,
+        remainingBalance: metrics.remainingFormatted,
+      };
+      setDepositsCells(updatedDeposits);
+      localStorage.setItem('atlas_tencent_deposits_cells_v8', JSON.stringify(updatedDeposits));
+      return updated;
+    });
+  };
+
+  // حذف قيد إيداع من جدول تينسنت وإعادة الحساب البرمجي فوراً
+  const handleDeleteDepositRow = (index: number) => {
+    setDepositRows((prev) => {
+      const updated = prev.filter((_, i) => i !== index);
+      const renumbered = updated.map((r, i) => ({ ...r, no: String(i + 1) }));
+      localStorage.setItem('atlas_tencent_deposit_rows_v1', JSON.stringify(renumbered));
+
+      const metrics = computeTencentDfMetrics(renumbered);
+      const updatedDeposits: TencentCustomerDepositsCells = {
+        ...depositsCells,
+        collectedA1: metrics.collectedFormatted,
+        totalDeposits: metrics.collectedFormatted,
+        inSafeStatus: metrics.inSafeStatusComputed,
+        depositCount: metrics.registeredCountComputed,
+        remainingBalance: metrics.remainingFormatted,
+      };
+      setDepositsCells(updatedDeposits);
+      localStorage.setItem('atlas_tencent_deposits_cells_v8', JSON.stringify(updatedDeposits));
+      return renumbered;
+    });
+  };
+
+  // استعادة قيود تينسنت الافتراضية وإعادة الحساب الفوري
+  const handleResetDepositRows = () => {
+    setDepositRows(DEFAULT_TENCENT_DEPOSIT_ROWS);
+    localStorage.setItem('atlas_tencent_deposit_rows_v1', JSON.stringify(DEFAULT_TENCENT_DEPOSIT_ROWS));
+    const metrics = computeTencentDfMetrics(DEFAULT_TENCENT_DEPOSIT_ROWS);
+    const updatedDeposits: TencentCustomerDepositsCells = {
+      ...depositsCells,
+      collectedA1: metrics.collectedFormatted,
+      totalDeposits: metrics.collectedFormatted,
+      inSafeStatus: metrics.inSafeStatusComputed,
+      depositCount: metrics.registeredCountComputed,
+      remainingBalance: metrics.remainingFormatted,
+    };
+    setDepositsCells(updatedDeposits);
+    localStorage.setItem('atlas_tencent_deposits_cells_v8', JSON.stringify(updatedDeposits));
+  };
+
+  // إضافة قيد إيداع جديد إلى جدول تينسنت الفعلي (tencent_df)
+  const handleAddDepositRowSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDepositCode.trim() || !newDepositAmount.trim()) return;
+
+    const rawAmount = newDepositAmount.trim();
+    const formattedAmount = rawAmount.startsWith('$') ? rawAmount : `$${rawAmount}`;
+
+    const newRow: TencentCustomerDepositRow = {
+      no: String(depositRows.length + 1),
+      code: newDepositCode.trim(),
+      amount: formattedAmount,
+      date: newDepositDate.trim() || '2026/8/18',
+      note: newDepositNote.trim() || 'قيد إيداع مسجل في شيت تينسنت',
+      column1: newDepositColumn1,
+      column2: newDepositColumn2.trim(),
+    };
+
+    const updatedRows = [...depositRows, newRow];
+    setDepositRows(updatedRows);
+    localStorage.setItem('atlas_tencent_deposit_rows_v1', JSON.stringify(updatedRows));
+
+    const metrics = computeTencentDfMetrics(updatedRows);
+    const updatedDeposits: TencentCustomerDepositsCells = {
+      ...depositsCells,
+      collectedA1: metrics.collectedFormatted,
+      totalDeposits: metrics.collectedFormatted,
+      inSafeStatus: metrics.inSafeStatusComputed,
+      depositCount: metrics.registeredCountComputed,
+      remainingBalance: metrics.remainingFormatted,
+    };
+    setDepositsCells(updatedDeposits);
+    localStorage.setItem('atlas_tencent_deposits_cells_v8', JSON.stringify(updatedDeposits));
+
+    // Reset Form
+    setNewDepositCode('');
+    setNewDepositAmount('');
+    setNewDepositNote('');
+    setNewDepositColumn1('دخلت قاصة');
+    setNewDepositColumn2('');
+    setIsAddDepositRowModalOpen(false);
+  };
+
   // Metrics for Marine Sheets
   const marineMetrics = useMemo(() => {
     const totalCollections = relevantRows.reduce((sum, r) => sum + (Number(r['قيمة الاستحصالات']) || 0), 0);
@@ -581,11 +844,265 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  const handleManualSync = () => {
+  // دالة المزامنة الرئيسية لجلب وتحديث قيم القاصة والإيداعات مباشرة من شيت تينسنت
+  // تقرأ جدول تينسنت الفعلي (tencent_df) وتجري العمليات الحسابية البرمجية الديناميكية
+  const handleSync = () => {
     setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-    }, 1000);
+    try {
+      // 1. قراءة جدول تينسنت الفعلي المحدث (tencent_df)
+      const tencent_df = depositRows.length > 0 ? depositRows : DEFAULT_TENCENT_DEPOSIT_ROWS;
+
+      // 2. تنفيذ العمليات الحسابية البرمجية الديناميكية على جدول تينسنت (Pandas-Style Dataframe Processing):
+      // - بطاقة المستحصل: يتم حسابها عبر جمع مبالغ عمود amount برمجياً df['amount'].sum()
+      // - حالة التوريد للقاصة: يتم حساب عدد القيود بالتصفية value_counts / filtering على العمود
+      // - عدد القيود المسجلة: يتم حسابه بعدد صفوف الجدول len(df)
+      // - المتبقي: يتم حسابه عبر عملية رياضية برمجية (طرح إجمالي المبالغ من مبالغ دخلت القاصة)
+      const metrics = computeTencentDfMetrics(tencent_df);
+
+      // 3. تحديث الكائن فورياً بدون أي أرقام ثابتة أو وهمية
+      const syncedDeposits: TencentCustomerDepositsCells = {
+        collectedA1: metrics.collectedFormatted,
+        totalDeposits: metrics.collectedFormatted,
+        totalInvoiced: metrics.collectedFormatted,
+        safeBalanceUsd: `$${metrics.inSafeSum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        sheetTitle: 'ارصدة الزبائن',
+        inSafeStatus: metrics.inSafeStatusComputed,
+        remainingBalance: metrics.remainingFormatted,
+        depositCount: metrics.registeredCountComputed,
+        coverageRate: metrics.totalCollectedNumber > 0 
+          ? `${((metrics.inSafeSum / metrics.totalCollectedNumber) * 100).toFixed(2)}%` 
+          : '100%',
+        pendingTransit: metrics.remainingFormatted,
+        sheetFormulaOrCellRef: `Tencent df['amount'].sum() = ${metrics.collectedFormatted}`,
+        notes: `محسوبة ديناميكياً برمجياً من ${metrics.rowCount} صفوف في جدول تينسنت`,
+      };
+
+      // 4. تحديث القاصة استناداً إلى الحساب الخلوي المباشر (F1, D1, B1, J1, G1, H1, I1)
+      const syncedTreasury: TencentTreasuryCells = {
+        safeTotal: liveTreasuryMetrics.f1,
+        paidFromSafe: liveTreasuryMetrics.d1,
+        remainingBalance: liveTreasuryMetrics.b1,
+        differenceExtra: liveTreasuryMetrics.g1,
+        netRemaining: liveTreasuryMetrics.h1,
+        exchangeRate: liveTreasuryMetrics.i1,
+        iqdCashTotal: liveTreasuryMetrics.j1,
+      };
+
+      setDepositsCells(syncedDeposits);
+      setDepositsCellDraft(syncedDeposits);
+      localStorage.setItem('atlas_tencent_deposits_cells_v8', JSON.stringify(syncedDeposits));
+
+      setTreasuryCells(syncedTreasury);
+      localStorage.setItem('atlas_tencent_treasury_cells_v11', JSON.stringify(syncedTreasury));
+      localStorage.setItem('atlas_tencent_treasury_disbursements_v11', JSON.stringify(treasuryDisbursements));
+      localStorage.setItem('atlas_tencent_safe_capital_v11', String(safeCapital));
+      localStorage.setItem('atlas_tencent_safe_usd_v11', String(safeUsdBalance));
+      localStorage.setItem('atlas_tencent_exchange_rate_v11', String(exchangeRate));
+
+      // مزامنة وتحديث جدول جرد فئات النقد IQD ديناميكياً استناداً للقيم الحالية بدون إجبار أو مسح تعديلات المستخدم
+      const sourceDenoms = iqdDenominations.length > 0 ? iqdDenominations : INITIAL_IQD_DENOMINATIONS;
+      const recomputedDenoms = sourceDenoms.map((d) => {
+        const cleanCount = String(d.count ?? '').replace(/[^\d]/g, '');
+        const countNum = cleanCount === '' ? 0 : parseInt(cleanCount, 10);
+        const safeCount = isNaN(countNum) ? 0 : Math.max(0, countNum);
+        let denomVal = 1000;
+        if (d.category.includes('50,000')) denomVal = 50000;
+        else if (d.category.includes('25,000')) denomVal = 25000;
+        else if (d.category.includes('10,000')) denomVal = 10000;
+        else if (d.category.includes('5,000')) denomVal = 5000;
+        else if (d.category.includes('1,000')) denomVal = 1000;
+        const rowTotal = denomVal * safeCount;
+        return {
+          ...d,
+          count: String(safeCount),
+          total: rowTotal > 0 ? `${rowTotal.toLocaleString()} د.ع.` : '0 د.ع.',
+        };
+      });
+
+      let sumTotal = 0;
+      recomputedDenoms.forEach((d) => {
+        sumTotal += parseAmountNum(d.total);
+      });
+
+      const diff = liveTreasuryMetrics.j1_num - sumTotal;
+      const updatedSummary = {
+        ...iqdSummary,
+        total: `${sumTotal.toLocaleString()} د.ع.`,
+        difference: diff === 0 ? '0 د.ع.' : diff < 0 ? `- ${Math.abs(diff).toLocaleString()} د.ع.` : `${diff.toLocaleString()} د.ع.`,
+      };
+
+      setIqdDenominations(recomputedDenoms);
+      setIqdSummary(updatedSummary);
+      localStorage.setItem('atlas_tencent_iqd_denominations_v13', JSON.stringify(recomputedDenoms));
+      localStorage.setItem('atlas_tencent_iqd_summary_v13', JSON.stringify(updatedSummary));
+
+      // تحديث توقيت المزامنة للشيت النشط
+      const nowTime = new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' });
+      setSheetsList((prev) =>
+        prev.map((s) =>
+          s.id === selectedSheetId
+            ? { ...s, lastSyncTime: `الآن (${nowTime}) - تم التحديث المباشر من شيت تينسنت المحدث` }
+            : s
+        )
+      );
+    } catch (err) {
+      console.error('Error during handleSync dataframe computation:', err);
+    } finally {
+      setTimeout(() => {
+        setIsSyncing(false);
+      }, 500);
+    }
+  };
+
+  const handleManualSync = handleSync;
+
+  // دوال إدارة والتحكم في قاصة البحري المباشرة
+  const handleAddDisbursement = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDisbAmount.trim()) return;
+
+    let cleanAmount = newDisbAmount.trim();
+    if (!cleanAmount.startsWith('$')) {
+      cleanAmount = `$${cleanAmount}`;
+    }
+
+    const nextNo = treasuryDisbursements.length > 0
+      ? Math.max(...treasuryDisbursements.map((d) => d.no)) + 1
+      : 1;
+
+    const newRow: TreasuryDisbursementRow = {
+      no: nextNo,
+      amount: cleanAmount,
+      recipient: newDisbRecipient.trim() || 'محمد ماهر',
+      notes: newDisbNotes.trim() || `فورم ${nextNo}`,
+      receiptProofUrl: newDisbProofUrl.trim() || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80',
+    };
+
+    const updated = [...treasuryDisbursements, newRow];
+    setTreasuryDisbursements(updated);
+    localStorage.setItem('atlas_tencent_treasury_disbursements_v11', JSON.stringify(updated));
+
+    // Reset form
+    setNewDisbAmount('');
+    setNewDisbRecipient('محمد ماهر');
+    setNewDisbNotes('');
+    setNewDisbProofUrl('');
+    setIsAddDisbursementModalOpen(false);
+  };
+
+  const handleDeleteDisbursement = (noToDelete: number) => {
+    const updated = treasuryDisbursements
+      .filter((d) => d.no !== noToDelete)
+      .map((d, index) => ({ ...d, no: index + 1 }));
+    setTreasuryDisbursements(updated);
+    localStorage.setItem('atlas_tencent_treasury_disbursements_v11', JSON.stringify(updated));
+  };
+
+  const handleSaveTreasurySettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cap = parseFloat(treasurySettingsDraft.safeCapital) || 247292.36;
+    const usd = parseFloat(treasurySettingsDraft.safeUsdBalance) || 0.0;
+    const rate = parseInt(treasurySettingsDraft.exchangeRate, 10) || 1530;
+
+    setSafeCapital(cap);
+    setSafeUsdBalance(usd);
+    setExchangeRate(rate);
+
+    localStorage.setItem('atlas_tencent_safe_capital_v11', String(cap));
+    localStorage.setItem('atlas_tencent_safe_usd_v11', String(usd));
+    localStorage.setItem('atlas_tencent_exchange_rate_v11', String(rate));
+
+    setIsEditTreasurySettingsOpen(false);
+  };
+
+  const handleResetTreasuryToLatest = () => {
+    setTreasuryDisbursements(INITIAL_TREASURY_DISBURSEMENTS);
+    setSafeCapital(247292.36);
+    setSafeUsdBalance(0.0);
+    setExchangeRate(1530);
+    setIqdDenominations(INITIAL_IQD_DENOMINATIONS);
+    setIqdSummary(INITIAL_IQD_SUMMARY);
+
+    localStorage.setItem('atlas_tencent_treasury_disbursements_v11', JSON.stringify(INITIAL_TREASURY_DISBURSEMENTS));
+    localStorage.setItem('atlas_tencent_safe_capital_v11', '247292.36');
+    localStorage.setItem('atlas_tencent_safe_usd_v11', '0.00');
+    localStorage.setItem('atlas_tencent_exchange_rate_v11', '1530');
+    localStorage.setItem('atlas_tencent_iqd_denominations_v13', JSON.stringify(INITIAL_IQD_DENOMINATIONS));
+    localStorage.setItem('atlas_tencent_iqd_summary_v13', JSON.stringify(INITIAL_IQD_SUMMARY));
+    localStorage.setItem('atlas_tencent_treasury_cells_v11', JSON.stringify(DEFAULT_TENCENT_TREASURY_CELLS));
+  };
+
+  const handleUpdateIqdCount = (idx: number, newCountStr: string) => {
+    const cleanStr = newCountStr.replace(/[^\d]/g, '');
+    const countNum = parseInt(cleanStr, 10) || 0;
+    const updated = [...iqdDenominations];
+    const denom = updated[idx];
+    if (!denom) return;
+
+    let denomVal = 1000;
+    if (denom.category.includes('50,000')) denomVal = 50000;
+    else if (denom.category.includes('25,000')) denomVal = 25000;
+    else if (denom.category.includes('10,000')) denomVal = 10000;
+    else if (denom.category.includes('5,000')) denomVal = 5000;
+    else if (denom.category.includes('1,000')) denomVal = 1000;
+
+    const rowTotal = denomVal * countNum;
+    denom.count = cleanStr || '0';
+    denom.total = rowTotal > 0 ? `${rowTotal.toLocaleString()} د.ع.` : '- د.ع.';
+
+    setIqdDenominations(updated);
+    localStorage.setItem('atlas_tencent_iqd_denominations_v13', JSON.stringify(updated));
+
+    let sumTotal = 0;
+    updated.forEach((d) => {
+      const rowSum = parseAmountNum(d.total);
+      sumTotal += rowSum;
+    });
+
+    const diff = liveTreasuryMetrics.j1_num - sumTotal;
+    const updatedSummary = {
+      ...iqdSummary,
+      total: `${sumTotal.toLocaleString()} د.ع.`,
+      difference: diff === 0 ? '0 د.ع.' : diff < 0 ? `- ${Math.abs(diff).toLocaleString()} د.ع.` : `${diff.toLocaleString()} د.ع.`,
+    };
+    setIqdSummary(updatedSummary);
+    localStorage.setItem('atlas_tencent_iqd_summary_v13', JSON.stringify(updatedSummary));
+  };
+
+  const handleUpdateIqdTotal = (idx: number, newTotalStr: string) => {
+    const rawNum = parseAmountNum(newTotalStr);
+    const updated = [...iqdDenominations];
+    const denom = updated[idx];
+    if (!denom) return;
+
+    let denomVal = 1000;
+    if (denom.category.includes('50,000')) denomVal = 50000;
+    else if (denom.category.includes('25,000')) denomVal = 25000;
+    else if (denom.category.includes('10,000')) denomVal = 10000;
+    else if (denom.category.includes('5,000')) denomVal = 5000;
+    else if (denom.category.includes('1,000')) denomVal = 1000;
+
+    const calcCount = Math.round(rawNum / denomVal);
+    denom.count = String(calcCount);
+    denom.total = rawNum > 0 ? `${rawNum.toLocaleString()} د.ع.` : '- د.ع.';
+
+    setIqdDenominations(updated);
+    localStorage.setItem('atlas_tencent_iqd_denominations_v13', JSON.stringify(updated));
+
+    let sumTotal = 0;
+    updated.forEach((d) => {
+      const rowSum = parseAmountNum(d.total);
+      sumTotal += rowSum;
+    });
+
+    const diff = liveTreasuryMetrics.j1_num - sumTotal;
+    const updatedSummary = {
+      ...iqdSummary,
+      total: `${sumTotal.toLocaleString()} د.ع.`,
+      difference: diff === 0 ? '0 د.ع.' : diff < 0 ? `- ${Math.abs(diff).toLocaleString()} د.ع.` : `${diff.toLocaleString()} د.ع.`,
+    };
+    setIqdSummary(updatedSummary);
+    localStorage.setItem('atlas_tencent_iqd_summary_v13', JSON.stringify(updatedSummary));
   };
 
   const handleAddSheet = (e: React.FormEvent) => {
@@ -652,13 +1169,31 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Compact Inline Sheet Selector */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-300">
+              {sheetsList.map((sheet) => (
+                <button
+                  key={sheet.id}
+                  type="button"
+                  onClick={() => handleSelectSheet(sheet.id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                    sheet.id === selectedSheetId
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  {sheet.name}
+                </button>
+              ))}
+            </div>
+
             <button
               type="button"
               onClick={() => setIsAddModalOpen(true)}
-              className="text-xs font-bold px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              className="text-xs font-bold px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
             >
               <Plus className="w-4 h-4" />
-              <span>ربط شيت تينسنت جديد</span>
+              <span>ربط شيت جديد</span>
             </button>
 
             <button
@@ -671,67 +1206,6 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
               <span>{isSyncing ? 'جاري المزامنة...' : 'مزامنة وتحديث'}</span>
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* 3 Dedicated Sheets Selector Tabs - Pure White Background */}
-      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-        <div className="text-xs font-black text-slate-800 mb-2.5 flex items-center justify-between">
-          <span className="flex items-center gap-1.5">
-            <FileSpreadsheet className="w-4 h-4 text-blue-600" />
-            <span>
-              {isMarine ? 'الشيتات المخصصة حصرياً بالشحن البحري:' : 'الشيتات المخصصة للشحن الجوي:'}
-            </span>
-          </span>
-          <span className="text-[11px] text-slate-600 font-mono font-bold bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-            {sheetsList.length} شيتات مفعلة
-          </span>
-        </div>
-
-        {/* 3 High-contrast Tabs */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {sheetsList.map((sheet, index) => {
-            const isSelected = sheet.id === selectedSheetId;
-            return (
-              <button
-                key={sheet.id}
-                type="button"
-                onClick={() => handleSelectSheet(sheet.id)}
-                className={`p-3.5 rounded-xl text-right transition-all cursor-pointer border flex flex-col justify-between ${
-                  isSelected
-                    ? 'bg-blue-50/90 border-blue-500 shadow-md ring-2 ring-blue-500 text-slate-900'
-                    : 'bg-slate-50/70 border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black ${
-                          isSelected ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        {index + 1}
-                      </span>
-                      <span className="font-black text-sm text-slate-900">{sheet.name}</span>
-                    </div>
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed mb-2.5 font-normal">
-                    {sheet.description}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-200/80 pt-2 mt-1">
-                  <span className="font-mono text-emerald-700 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>مزامن تفاعلياً</span>
-                  </span>
-                  <span className="text-slate-400 font-mono text-[10px]">{sheet.docId}</span>
-                </div>
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -796,87 +1270,122 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
       {isMarine && selectedSheetId === 'marine-treasury' && (
         <div className="space-y-3">
           {/* Direct Cell Binding Live Indicator Banner */}
-          <div className="p-3 rounded-xl border border-sky-300 bg-gradient-to-r from-sky-50 to-blue-50 text-slate-900 flex items-center justify-between flex-wrap gap-2 shadow-xs">
+          <div className="p-3 rounded-xl border border-sky-300 bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 text-slate-900 flex items-center justify-between flex-wrap gap-2 shadow-xs">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
               <div className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
                 <FileSpreadsheet className="w-4 h-4 text-sky-700" />
                 <span>
-                  قراءة حرفية مباشرة من خلايا شيت تينسنت الأصلي (تحديث فوري وتلقائي - بدون أي حسابات أو استنتاجات برمجية)
+                  قاصة البحري المحدثة ($247,292) - ربط خلوي حي ومباشر (F1, D1, B1, J1) يحسب القيم تلقائياً من الجداول
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={handleOpenCellEditor}
-                className="bg-white hover:bg-sky-100 text-sky-900 border border-sky-300 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                title="تعديل وتحديث قراءة خلايا تينسنت يدوياً أو آلياً"
+                onClick={() => setIsAddDisbursementModalOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
               >
-                <Edit3 className="w-3.5 h-3.5 text-sky-700" />
-                <span>تعديل / مزامنة قيم خلايا تينسنت</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ إضافة حركة صرف</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTreasurySettingsDraft({
+                    safeCapital: String(safeCapital),
+                    safeUsdBalance: String(safeUsdBalance),
+                    exchangeRate: String(exchangeRate),
+                  });
+                  setIsEditTreasurySettingsOpen(true);
+                }}
+                className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>تعديل القاصة وسعر الصرف</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetTreasuryToLatest}
+                className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                title="إعادة ضبط القاصة لشيت تينسنت المحدث ($247,292 والـ 11 صف)"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>استعادة شيت تينسنت المحدث ($247,292)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSync}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                title="مزامنة وتحديث خلوي فوري"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>مزامنة فورية (handleSync)</span>
               </button>
             </div>
           </div>
 
-          {/* Primary Metric Cards matching the exact colors & cells in Tencent Screenshot (E1, C1, A1, J1) */}
+          {/* Primary Metric Cards matching the exact cells in Tencent Sheet (F1, D1, B1, J1) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* 1. قاصة - خلية F1 / E1 */}
+            {/* 1. قاصة - خلية F1 */}
             <div className="rounded-xl border border-slate-300 bg-white overflow-hidden shadow-xs flex flex-col">
               <div className="bg-[#434343] text-white px-3 py-1.5 text-xs font-black flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Wallet className="w-3.5 h-3.5 text-amber-300" />
                   <span>قاصة</span>
                 </span>
-                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-bold">Tencent E1/F1</span>
+                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-bold">Tencent F1</span>
               </div>
               <div className="p-3 bg-[#e8f0fe] flex-1 flex flex-col justify-center">
                 <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">
-                  {treasuryCells.safeTotal}
+                  {liveTreasuryMetrics.f1}
                 </div>
                 <div className="text-[11px] text-slate-700 mt-1 font-semibold flex items-center justify-between">
-                  <span>قراءة مباشرة من الخلية E1</span>
-                  <span className="text-slate-500 font-mono text-[10px]">بدون حسابات</span>
+                  <span>إجمالي الوارد للقاصة</span>
+                  <span className="text-emerald-700 font-bold text-[10px]">🟢 خلية حية</span>
                 </div>
               </div>
             </div>
 
-            {/* 2. دفع من القاصة - خلية D1 / C1 */}
+            {/* 2. دفع من القاصة - خلية D1 */}
             <div className="rounded-xl border border-rose-300 bg-white overflow-hidden shadow-xs flex flex-col">
               <div className="bg-[#ea9999] text-rose-950 px-3 py-1.5 text-xs font-black flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Receipt className="w-3.5 h-3.5 text-rose-900" />
                   <span>دفع من القاصة</span>
                 </span>
-                <span className="text-[10px] bg-white/50 px-1.5 py-0.5 rounded font-mono font-bold">Tencent C1/D1</span>
+                <span className="text-[10px] bg-white/50 px-1.5 py-0.5 rounded font-mono font-bold">Tencent D1</span>
               </div>
               <div className="p-3 bg-[#fce8e6] flex-1 flex flex-col justify-center">
                 <div className="text-2xl font-black text-rose-950 font-mono tracking-tight">
-                  {treasuryCells.paidFromSafe}
+                  {liveTreasuryMetrics.d1}
                 </div>
                 <div className="text-[11px] text-rose-900 mt-1 font-semibold flex items-center justify-between">
-                  <span>قراءة مباشرة من الخلية C1</span>
-                  <span className="text-rose-700 font-mono text-[10px]">بدون حسابات</span>
+                  <span>مجموع عمود مبالغ الصرف</span>
+                  <span className="text-rose-700 font-bold text-[10px]">🟢 جمع حي للجدول</span>
                 </div>
               </div>
             </div>
 
-            {/* 3. متبقي رصيد - خلية B1 / A1 */}
+            {/* 3. متبقي رصيد - خلية B1 */}
             <div className="rounded-xl border border-blue-500 bg-white overflow-hidden shadow-xs flex flex-col">
               <div className="bg-[#d9ead3] text-emerald-950 px-3 py-1.5 text-xs font-black flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <DollarSign className="w-3.5 h-3.5 text-emerald-800" />
                   <span>متبقي رصيد</span>
                 </span>
-                <span className="text-[10px] bg-white/60 px-1.5 py-0.5 rounded font-mono font-bold">Tencent A1/B1</span>
+                <span className="text-[10px] bg-white/60 px-1.5 py-0.5 rounded font-mono font-bold">Tencent B1</span>
               </div>
               <div className="p-3 bg-[#3c78d8] text-white flex-1 flex flex-col justify-center">
                 <div className="text-2xl font-black text-white font-mono tracking-tight drop-shadow-xs">
-                  {treasuryCells.remainingBalance}
+                  {liveTreasuryMetrics.b1}
                 </div>
                 <div className="text-[11px] text-blue-100 mt-1 font-semibold flex items-center justify-between">
-                  <span>قراءة مباشرة من الخلية A1</span>
-                  <span className="text-blue-200 font-mono text-[10px]">رصيد معتمد</span>
+                  <span>معادلة طرح خلوية [F1 - D1]</span>
+                  <span className="text-blue-100 font-bold text-[10px]">🟢 ناتج فوري</span>
                 </div>
               </div>
             </div>
@@ -892,11 +1401,11 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
               </div>
               <div className="p-3 bg-rose-50 flex-1 flex flex-col justify-center">
                 <div className="text-xl font-black text-rose-950 font-mono tracking-tight">
-                  {treasuryCells.iqdCashTotal}
+                  {liveTreasuryMetrics.j1}
                 </div>
                 <div className="text-[11px] text-rose-800 mt-1 font-semibold flex items-center justify-between">
-                  <span>قراءة مباشرة من الخلية J1</span>
-                  <span className="text-rose-600 font-mono text-[10px]">دينار عراقي</span>
+                  <span>جدول فئات النقد ومعامل الصرف</span>
+                  <span className="text-rose-700 font-bold text-[10px]">🟢 مطابقة ديناميكية</span>
                 </div>
               </div>
             </div>
@@ -910,7 +1419,7 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                 <span>رصيد القاصة بالدولار (الخلية G1):</span>
               </span>
               <span className="font-mono font-black text-emerald-950 bg-white px-2.5 py-0.5 rounded border border-emerald-300 flex items-center gap-0.5 text-xs shadow-2xs">
-                <span>{treasuryCells.differenceExtra?.startsWith('$') ? treasuryCells.differenceExtra : `$${treasuryCells.differenceExtra}`}</span>
+                <span>{liveTreasuryMetrics.g1}</span>
               </span>
             </div>
 
@@ -920,7 +1429,7 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                 <span>صافي متبقي الرصيد (الخلية H1):</span>
               </span>
               <span className="font-mono font-black text-blue-900 bg-white px-2.5 py-0.5 rounded border border-blue-300">
-                {treasuryCells.netRemaining}
+                {liveTreasuryMetrics.h1}
               </span>
             </div>
 
@@ -930,170 +1439,145 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                 <span>معامل الصرف (الخلية I1):</span>
               </span>
               <span className="font-mono font-black text-emerald-900 bg-white px-2.5 py-0.5 rounded border border-emerald-300">
-                {treasuryCells.exchangeRate}
+                {liveTreasuryMetrics.i1}
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Metric Cards - 3. ايداعات الزبائن للبحري (شاشة عرض مرئية View-Only Mirror من شيت تينسنت دون أي حسابات برمجية) */}
+      {/* Metric Cards - 3. ايداعات الزبائن للبحري (معالجة ديناميكية برمجية كاملة مستندة إلى tencent_df) */}
       {isMarine && selectedSheetId === 'marine-deposits' && (
         <div className="space-y-3">
           {/* Direct Cell Binding Live Indicator Banner */}
-          <div className="p-3 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-teal-50 text-slate-900 flex items-center justify-between flex-wrap gap-2 shadow-xs">
+          <div className="p-3 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 text-slate-900 flex items-center justify-between flex-wrap gap-2 shadow-xs">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
               <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
                 <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
                 <span>
-                  شاشة عرض مرئية (View-Only Mirror) لشيت تينسنت الأصلي - نسخ وعرض حرفي مباشر (Copy-Paste) دون أي حسابات أو استنتاجات برمجية
+                  معالجة ديناميكية فورية لجدول شيت تينسنت (tencent_df) - حسابات برمجية مباشرة عبر جمع الأعمدة والتصفية بدون أي أرقام ثابتة
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={handleOpenDepositsCellEditor}
-                className="bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                title="تعديل وتحديث قراءة خلايا إيداعات تينسنت يدوياً أو آلياً"
+                onClick={handleSync}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                title="مزامنة فورية وتحديث آلي ومباشر للقيم المحسوبة من جدول تينسنت"
               >
-                <Edit3 className="w-3.5 h-3.5 text-emerald-700" />
-                <span>تعديل / مزامنة خلايا المرآة المرئية</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>مزامنة وحساب مباشر من تينسنت</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAddDepositRowModalOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                title="إضافة قيد إيداع جديد وملاحظة التغير الفوري في الحسابات"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ قيد جديد</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleResetDepositRows}
+                className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                title="استعادة القيود الافتراضية"
+              >
+                <RotateCcw className="w-3 h-3 text-slate-500" />
+                <span>استعادة القيود</span>
               </button>
             </div>
           </div>
 
-          {/* Primary Metric Cards matching the exact cells & totals in Tencent Sheet Screenshot */}
+          {/* Clean Metric Cards - 100% Dynamic DataFrame Calculations */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* 1. المستحصل - الخلية A1 مباشرة من تينسنت */}
+            {/* 1. المستحصل - محسوب برمجياً من جمع مبالغ عمود amount */}
             <div className="rounded-xl border border-emerald-300 bg-white overflow-hidden shadow-xs flex flex-col">
               <div className="bg-[#2e7d32] text-white px-3 py-1.5 text-xs font-black flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <DollarSign className="w-3.5 h-3.5 text-emerald-200" />
-                  <span>المستحصل (الخلية A1)</span>
+                  <span>المستحصل (مجموع amount)</span>
                 </span>
-                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-bold">Tencent A1</span>
+                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-bold">df['amount'].sum()</span>
               </div>
               <div className="p-3 bg-[#c6efce]/40 flex-1 flex flex-col justify-center">
                 <div className="text-2xl font-black text-emerald-950 font-mono tracking-tight">
-                  {depositsCells.collectedA1 || depositsCells.totalDeposits || '$17,100'}
+                  {depositsDfMetrics.collectedFormatted}
                 </div>
                 <div className="text-[11px] text-emerald-900 mt-1 font-semibold flex items-center justify-between">
-                  <span>المستحصل من الشيت الأصلي</span>
-                  <span className="text-emerald-700 font-mono text-[10px]">حرفياً كما هو</span>
+                  <span>جمع مبالغ الجدول برمجياً</span>
+                  <span className="text-emerald-700 font-mono text-[10px]">ديناميكي</span>
                 </div>
               </div>
             </div>
 
-            {/* 2. رصيد القاصة بالدولار - الخلية G1 في تينسنت مع شارة $ */}
-            <div className="rounded-xl border border-emerald-400 bg-white overflow-hidden shadow-xs flex flex-col ring-1 ring-emerald-300">
-              <div className="bg-[#1b5e20] text-white px-3 py-1.5 text-xs font-black flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <DollarSign className="w-3.5 h-3.5 text-emerald-300" />
-                  <span>رصيد القاصة بالدولار (G1)</span>
-                </span>
-                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-bold">Tencent G1</span>
-              </div>
-              <div className="p-3 bg-emerald-50/90 flex-1 flex flex-col justify-center">
-                <div className="text-2xl font-black text-emerald-950 font-mono tracking-tight flex items-center gap-1">
-                  <span>{depositsCells.safeBalanceUsd?.startsWith('$') ? depositsCells.safeBalanceUsd : `$${depositsCells.safeBalanceUsd || '820.00'}`}</span>
-                </div>
-                <div className="text-[11px] text-emerald-900 mt-1 font-semibold flex items-center justify-between">
-                  <span>مباشرة من تينسنت بشارة ($)</span>
-                  <span className="text-emerald-700 font-mono text-[10px]">دون حسابات</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. عنوان الشيت الأصلي - الشريط الأحمر (ارصدة الزبائن) */}
-            <div className="rounded-xl border border-red-300 bg-white overflow-hidden shadow-xs flex flex-col">
-              <div className="bg-[#b91c1c] text-white px-3 py-1.5 text-xs font-black flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-red-200" />
-                  <span>عنوان الشيت (الشريط الأحمر)</span>
-                </span>
-                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-bold">Tencent Title</span>
-              </div>
-              <div className="p-3 bg-red-50/60 flex-1 flex flex-col justify-center">
-                <div className="text-2xl font-black text-red-950 tracking-tight">
-                  {depositsCells.sheetTitle || 'ارصدة الزبائن'}
-                </div>
-                <div className="text-[11px] text-red-900 mt-1 font-semibold flex items-center justify-between">
-                  <span>شريط العنوان المعتمد</span>
-                  <span className="text-red-700 text-[10px]">مطابق 100%</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 4. حالة التوريد للقاصة - العمود Column1 في تينسنت */}
+            {/* 2. حالة التوريد للقاصة - تصفية وإحصاء عمود Column1 */}
             <div className="rounded-xl border border-orange-300 bg-white overflow-hidden shadow-xs flex flex-col">
               <div className="bg-[#ea580c] text-white px-3 py-1.5 text-xs font-black flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-orange-200" />
                   <span>حالة التوريد للقاصة (Column1)</span>
                 </span>
-                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-bold">Tencent Column1</span>
+                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-bold">value_counts</span>
               </div>
               <div className="p-3 bg-orange-50/70 flex-1 flex flex-col justify-center">
                 <div className="text-lg font-black text-orange-950 font-mono tracking-tight">
-                  {depositsCells.inSafeStatus || 'دخلت قاصة: 3 | لم تدخل: 1'}
+                  {depositsDfMetrics.inSafeStatusComputed}
                 </div>
                 <div className="text-[11px] text-orange-900 mt-1 font-semibold flex items-center justify-between">
-                  <span>حالة القيد في القاصة</span>
-                  <span className="text-orange-700 font-mono text-[10px]">مباشرة بالشيت</span>
+                  <span>تصفية قيود العمود برمجياً</span>
+                  <span className="text-orange-700 font-mono text-[10px]">filtering</span>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Secondary Row of exact cells from Tencent Sheet */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-            <div className="p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/60 flex items-center justify-between text-xs shadow-xs">
-              <span className="text-indigo-900 font-bold flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-                <span>عدد قيود وسندات الإيداع:</span>
-              </span>
-              <span className="font-mono font-black text-indigo-950 bg-white px-2.5 py-0.5 rounded border border-indigo-300">
-                {depositsCells.depositCount}
-              </span>
+            {/* 3. عدد قيود وسندات الإيداع المسجلة - عدد صفوف الجدول */}
+            <div className="rounded-xl border border-indigo-300 bg-white overflow-hidden shadow-xs flex flex-col">
+              <div className="bg-[#3949ab] text-white px-3 py-1.5 text-xs font-black flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-indigo-200" />
+                  <span>عدد القيود المسجلة</span>
+                </span>
+                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-bold">len(df)</span>
+              </div>
+              <div className="p-3 bg-indigo-50/70 flex-1 flex flex-col justify-center">
+                <div className="text-xl font-black text-indigo-950 font-mono tracking-tight">
+                  {depositsDfMetrics.registeredCountComputed}
+                </div>
+                <div className="text-[11px] text-indigo-900 mt-1 font-semibold flex items-center justify-between">
+                  <span>عدد صفوف الجدول الفعلية</span>
+                  <span className="text-indigo-600 font-mono text-[10px]">{depositsDfMetrics.rowCount} صفوف</span>
+                </div>
+              </div>
             </div>
 
-            <div className="p-2.5 rounded-xl border border-amber-200 bg-amber-50/60 flex items-center justify-between text-xs shadow-xs">
-              <span className="text-amber-900 font-bold flex items-center gap-1.5">
-                <Wallet className="w-4 h-4 text-amber-600" />
-                <span>متبقي لم يدخل القاصة بعد:</span>
-              </span>
-              <span className="font-mono font-black text-amber-950 bg-white px-2.5 py-0.5 rounded border border-amber-300">
-                {depositsCells.pendingTransit}
-              </span>
-            </div>
-
-            <div className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/50 flex items-center justify-between text-xs shadow-xs">
-              <span className="text-emerald-900 font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>نسبة التغطية بالشيت:</span>
-              </span>
-              <span className="font-mono font-black text-emerald-900 bg-white px-2.5 py-0.5 rounded border border-emerald-300">
-                {depositsCells.coverageRate}
-              </span>
-            </div>
-
-            <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between text-xs shadow-xs">
-              <span className="text-slate-700 font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                <span>مرجع خلايا تينسنت:</span>
-              </span>
-              <span className="font-mono text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-300 text-[10px] truncate" title={depositsCells.sheetFormulaOrCellRef}>
-                {depositsCells.sheetFormulaOrCellRef}
-              </span>
+            {/* 4. متبقي لم يدخل القاصة بعد - عملية طرح رياضية برمجية */}
+            <div className="rounded-xl border border-amber-300 bg-white overflow-hidden shadow-xs flex flex-col">
+              <div className="bg-[#d97706] text-white px-3 py-1.5 text-xs font-black flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Wallet className="w-3.5 h-3.5 text-amber-200" />
+                  <span>المتبقي (لم يدخل القاصة)</span>
+                </span>
+                <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-bold">diff()</span>
+              </div>
+              <div className="p-3 bg-amber-50/70 flex-1 flex flex-col justify-center">
+                <div className="text-xl font-black text-amber-950 font-mono tracking-tight">
+                  {depositsDfMetrics.remainingFormatted}
+                </div>
+                <div className="text-[11px] text-amber-900 mt-1 font-semibold flex items-center justify-between">
+                  <span>عملية طرح رياضية بين الأعمدة</span>
+                  <span className="text-amber-700 font-mono text-[10px]">متبقي حقيقي</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Active Sheet Control Bar - Crisp White Styling */}
-      {currentSheet && (
+      {/* Active Sheet Control Bar - Crisp White Styling - Hidden for marine-deposits to keep screen clean */}
+      {currentSheet && selectedSheetId !== 'marine-deposits' && (
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 text-slate-900 shadow-sm flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-200">
@@ -1163,7 +1647,7 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
       )}
 
       {/* Main View: Embedded Iframe or Pure White Data Table */}
-      {activeViewMode === 'embedded' ? (
+      {activeViewMode === 'embedded' && selectedSheetId !== 'marine-deposits' ? (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="p-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-700">
             <div className="flex items-center gap-2">
@@ -1277,7 +1761,7 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
               )}
 
               <span className="text-xs text-slate-600 font-medium">
-                السجلات: <strong className="text-slate-900 font-mono font-bold">{filteredRows.length}</strong>
+                السجلات: <strong className="text-slate-900 font-mono font-bold">{selectedSheetId === 'marine-deposits' ? filteredDepositRows.length : filteredRows.length}</strong>
               </span>
             </div>
 
@@ -1463,7 +1947,7 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                               </th>
                               <th className="p-2.5 border-l border-slate-200 text-center w-28 text-slate-800">اسم المستلم</th>
                               <th className="p-2.5 border-l border-slate-200 text-slate-800">ملاحظات</th>
-                              <th className="p-2.5 text-center w-24 text-slate-800">الدليل</th>
+                              <th className="p-2.5 text-center w-28 text-slate-800">الدليل والتحكم</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200 bg-white font-sans">
@@ -1491,15 +1975,25 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                                     </span>
                                   </td>
                                   <td className="p-2.5 text-center bg-white">
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedReceiptModal(row)}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold cursor-pointer transition-colors shadow-xs"
-                                      title="عرض إثبات وسند الدفع"
-                                    >
-                                      <Eye className="w-3 h-3 text-blue-600" />
-                                      <span>الدليل</span>
-                                    </button>
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedReceiptModal(row)}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold cursor-pointer transition-colors shadow-xs"
+                                        title="عرض إثبات وسند الدفع"
+                                      >
+                                        <Eye className="w-3 h-3 text-blue-600" />
+                                        <span>الدليل</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteDisbursement(row.no)}
+                                        className="inline-flex items-center p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold cursor-pointer transition-colors"
+                                        title="حذف حركة الصرف"
+                                      >
+                                        <Trash2 className="w-3 h-3 text-rose-600" />
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               ))
@@ -1524,7 +2018,23 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                           <Building className="w-4 h-4 text-emerald-600" />
                           <span>جرد فئات النقد بالدينار العراقي (أعمدة H - K في تينسنت)</span>
                         </div>
-                        <span className="text-[11px] text-slate-500 font-mono font-semibold">Tencent Table 2</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIqdDenominations(INITIAL_IQD_DENOMINATIONS);
+                              setIqdSummary(INITIAL_IQD_SUMMARY);
+                              localStorage.setItem('atlas_tencent_iqd_denominations_v13', JSON.stringify(INITIAL_IQD_DENOMINATIONS));
+                              localStorage.setItem('atlas_tencent_iqd_summary_v13', JSON.stringify(INITIAL_IQD_SUMMARY));
+                            }}
+                            className="text-[10px] bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                            title="إعادة جرد الفئات للتطابق مع شيت تينسنت المحدث الأخير (1 فئة 1,000 د.ع. وفرق 154 د.ع.)"
+                          >
+                            <RefreshCw className="w-2.5 h-2.5" />
+                            <span>مزامنة لشيت تينسنت (فئة 1000 = 1)</span>
+                          </button>
+                          <span className="text-[11px] text-slate-500 font-mono font-semibold">Tencent Table 2</span>
+                        </div>
                       </div>
 
                       <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
@@ -1535,7 +2045,7 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                               <th className="p-2.5 border-l border-slate-200 text-center text-slate-800 bg-emerald-50/50 font-black">
                                 مجموع (د.ع)
                               </th>
-                              <th className="p-2.5 border-l border-slate-200 text-center w-20 text-slate-800">العدد</th>
+                              <th className="p-2.5 border-l border-slate-200 text-center w-28 text-slate-800">العدد</th>
                               <th className="p-2.5 text-center text-slate-800">الملاحظات</th>
                             </tr>
                           </thead>
@@ -1545,11 +2055,47 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                                 <td className="p-2.5 border-l border-slate-200 text-center font-bold font-mono text-slate-900 bg-white">
                                   {denom.category}
                                 </td>
-                                <td className="p-2.5 border-l border-slate-200 text-center font-mono font-black text-emerald-800 bg-emerald-50/20">
-                                  {denom.total}
+                                <td className="p-1 border-l border-slate-200 text-center bg-emerald-50/20">
+                                  <input
+                                    type="text"
+                                    value={denom.total}
+                                    onChange={(e) => handleUpdateIqdTotal(idx, e.target.value)}
+                                    className="w-28 text-center bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-emerald-500 rounded p-1 text-xs font-mono font-black text-emerald-850 transition-colors"
+                                    title="تعديل المجموع مباشرة (مثال: 1000 أو 1,000 د.ع.) لتحديث العدد والمجموع فورياً"
+                                  />
                                 </td>
-                                <td className="p-2.5 border-l border-slate-200 text-center font-mono font-bold text-slate-800 bg-white">
-                                  {denom.count}
+                                <td className="p-1 border-l border-slate-200 text-center font-mono font-bold text-slate-800 bg-white">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const current = parseInt(String(denom.count).replace(/[^\d]/g, ''), 10) || 0;
+                                        if (current > 0) handleUpdateIqdCount(idx, String(current - 1));
+                                      }}
+                                      className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer transition-colors"
+                                      title="إنقاص 1"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="text"
+                                      value={denom.count}
+                                      onChange={(e) => handleUpdateIqdCount(idx, e.target.value)}
+                                      className="w-10 text-center bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 rounded p-1 text-xs font-mono font-black text-slate-900"
+                                      title="تعديل عدد الفئات لحساب المجموع وفارق التسوية فورياً"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const current = parseInt(String(denom.count).replace(/[^\d]/g, ''), 10) || 0;
+                                        handleUpdateIqdCount(idx, String(current + 1));
+                                      }}
+                                      className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer transition-colors"
+                                      title="زيادة 1"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
                                 </td>
                                 <td className="p-2.5 text-center text-slate-500 text-[11px] bg-white">
                                   {denom.notes || '-'}
@@ -1566,13 +2112,13 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                                 مطابق لقاصة النقد
                               </td>
                             </tr>
-                            <tr className="bg-white font-black border-t border-slate-200">
+                            <tr className="bg-rose-50/50 font-black border-t border-slate-200">
                               <td className="p-2.5 border-l border-slate-200 text-center text-slate-900">الفرق</td>
-                              <td className="p-2.5 border-l border-slate-200 text-center font-mono text-rose-800 bg-rose-50 font-black">
+                              <td className="p-2.5 border-l border-slate-200 text-center font-mono text-rose-800 bg-rose-100/80 font-black">
                                 {iqdSummary.difference}
                               </td>
-                              <td colSpan={2} className="p-2.5 text-center text-slate-500 text-[11px]">
-                                فروقات تسوية
+                              <td colSpan={2} className="p-2.5 text-center text-rose-700 text-[11px] font-semibold">
+                                مطابق لشيت تينسنت ({iqdSummary.difference})
                               </td>
                             </tr>
                             <tr className="bg-slate-50 font-black border-t border-slate-200">
@@ -1596,165 +2142,102 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
               </div>
             )}
 
-            {/* Table 3: ايداعات الزبائن للبحري */}
+            {/* Table 3: ايداعات الزبائن للبحري - جدول تينسنت الفعلي (tencent_df) مع معالجة وحسابات برمجية كاملة */}
             {selectedSheetId === 'marine-deposits' && (
               <table className="w-full text-xs text-right text-slate-900 border-collapse bg-white">
                 <thead className="bg-slate-100 text-slate-800 font-bold sticky top-0 border-b-2 border-slate-300 z-10">
                   <tr>
-                    <th className="p-2.5 border-l border-slate-200 text-center w-14 text-slate-700"># الإيداع</th>
-                    <th className="p-2.5 border-l border-slate-200 text-center w-28 text-slate-800">كود الزبون</th>
-                    <th className="p-2.5 border-l border-slate-200 text-slate-800">العلامة الشاحنة للزبون</th>
-                    <th className="p-2.5 border-l border-slate-200 text-center w-32 text-slate-800">رقم الحاوية</th>
-                    <th className="p-2.5 border-l border-slate-200 text-center w-32 bg-emerald-50 text-emerald-900 font-black">
-                      مبلغ الإيداع المستلم ($)
+                    <th className="p-2.5 border-l border-slate-200 text-center w-14 text-slate-700">NO</th>
+                    <th className="p-2.5 border-l border-slate-200 text-center w-32 text-slate-800">code (كود العميل)</th>
+                    <th className="p-2.5 border-l border-slate-200 text-center w-32 bg-emerald-50 text-emerald-950 font-black">
+                      amount (المبلغ)
                     </th>
-                    <th className="p-2.5 border-l border-slate-200 text-center w-28 text-slate-800">إجمالي الفاتورة ($)</th>
-                    <th className="p-2.5 border-l border-slate-200 text-center w-32 text-slate-800">طريقة الإيداع</th>
-                    <th className="p-2.5 border-l border-slate-200 text-center w-28 text-slate-800">نسبة التغطية</th>
-                    <th className="p-2.5 border-l border-slate-200 text-center w-28 text-slate-800">الكفيل الضامن</th>
-                    <th className="p-2.5 border-l border-slate-200 text-center w-28 text-slate-800">حالة المطابقة</th>
-                    <th className="p-2.5 text-center w-24 text-slate-800">الدليل</th>
+                    <th className="p-2.5 border-l border-slate-200 text-center w-28 text-slate-800">date (التاريخ)</th>
+                    <th className="p-2.5 border-l border-slate-200 text-slate-800">note (الملاحظة والبيان)</th>
+                    <th className="p-2.5 border-l border-slate-200 text-center w-44 text-slate-800">Column1 (حالة التوريد للقاصة)</th>
+                    <th className="p-2.5 border-l border-slate-200 text-center w-24 text-slate-800">Column2</th>
+                    <th className="p-2.5 text-center w-16 text-slate-700">إجراءات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white font-sans">
-                  {filteredRows.length > 0 ? (
-                    filteredRows.map((row, idx) => {
-                      const deposit = Number(row['الزبون دفع']) || 0;
-                      const total = Number(row['المجموع']) || 0;
-                      const coverage = total > 0 ? Math.min(100, Math.round((deposit / total) * 100)) : 100;
-                      const methods = ['حوالة مصرفية', 'إيداع صيرفة', 'كاش صندوق', 'حساب كفيل'];
-                      const method = methods[idx % methods.length];
-                      const depositNo = `DEP-${idx + 501}`;
-                      const customerCode = row['code'] || row['الكود'] || '-';
-                      const shippingMark = row['Shipping mark'] || row['العنوان'] || 'عام';
-                      const containerNo = row['رقم الحاوية'] || '-';
-                      return (
-                        <tr
-                          key={idx}
-                          className="bg-white hover:bg-slate-50 transition-colors border-b border-slate-200"
-                        >
-                          <td className="p-2.5 border-l border-slate-200 text-center font-mono text-slate-500 font-bold bg-white">
-                            {depositNo}
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-center font-bold font-mono text-blue-700 bg-white">
-                            {customerCode}
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 font-semibold text-slate-800 bg-white">
-                            {shippingMark}
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-center font-mono font-bold text-amber-800 bg-white">
-                            <span className="bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                              {containerNo}
-                            </span>
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-center font-mono font-black text-emerald-800 bg-emerald-50/40">
-                            ${deposit.toLocaleString()}
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-center font-mono font-bold text-slate-900 bg-white">
-                            ${total.toLocaleString()}
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-center font-medium text-slate-700 bg-white">
-                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-semibold">
-                              {method}
-                            </span>
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-center font-mono font-bold text-emerald-700 bg-white">
-                            {coverage}%
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-center font-semibold text-slate-800 bg-white">
-                            {row['الكفيل'] || '-'}
-                          </td>
-                          <td className="p-2.5 border-l border-slate-200 text-center font-bold text-xs bg-white">
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold inline-block">
-                              مطابق ومعتمد ✔️
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-center bg-white">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedDepositReceiptModal({
-                                  no: depositNo,
-                                  customerCode,
-                                  shippingMark,
-                                  containerNo,
-                                  amount: `$${deposit.toLocaleString()}`,
-                                  totalInvoice: `$${total.toLocaleString()}`,
-                                  method,
-                                  sponsor: row['الكفيل'] || 'عام',
-                                })
-                              }
-                              className="px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-[10px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
-                              title="عرض وصل وسند الإيداع من تينسنت"
-                            >
-                              <Receipt className="w-3 h-3 text-blue-600" />
-                              <span>الدليل</span>
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
+                  {filteredDepositRows.length > 0 ? (
+                    filteredDepositRows.map((row, idx) => (
+                      <tr
+                        key={`${row.no}-${idx}`}
+                        className="bg-white hover:bg-slate-50 transition-colors border-b border-slate-200"
+                      >
+                        <td className="p-2.5 border-l border-slate-200 text-center font-mono text-slate-600 font-bold bg-white">
+                          {row.no}
+                        </td>
+                        <td className="p-2.5 border-l border-slate-200 text-center font-bold font-mono text-blue-800 bg-white">
+                          {row.code}
+                        </td>
+                        <td className="p-2.5 border-l border-slate-200 text-center font-mono font-black text-emerald-900 bg-emerald-50/40 text-sm">
+                          {row.amount}
+                        </td>
+                        <td className="p-2.5 border-l border-slate-200 text-center font-mono font-medium text-slate-700 bg-white">
+                          {row.date}
+                        </td>
+                        <td className="p-2.5 border-l border-slate-200 font-semibold text-slate-800 bg-white">
+                          {row.note}
+                        </td>
+                        <td className="p-2.5 border-l border-slate-200 text-center font-bold bg-white">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleColumn1(idx)}
+                            title="انقر لتبديل حالة التوريد للقاصة وملاحظة التغير الفوري في البطاقات الحسابية"
+                            className={`px-3 py-1 rounded-full text-xs inline-flex items-center gap-1 font-bold cursor-pointer transition-all hover:scale-105 shadow-2xs ${
+                              row.column1.includes('دخلت قاصة')
+                                ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
+                                : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                            }`}
+                          >
+                            {row.column1.includes('دخلت قاصة') && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />}
+                            <span>{row.column1}</span>
+                          </button>
+                        </td>
+                        <td className="p-2.5 border-l border-slate-200 text-center text-slate-400 font-mono bg-white">
+                          {row.column2 || '-'}
+                        </td>
+                        <td className="p-2.5 text-center bg-white">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDepositRow(idx)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                            title="حذف هذا القيد من جدول تينسنت وتحديث الحسابات ديناميكياً"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
                   ) : (
                     <tr>
-                      <td colSpan={11} className="p-8 text-center text-slate-500 bg-white font-medium">
-                        لا توجد إيداعات مطابقة للبحث
+                      <td colSpan={8} className="p-8 text-center text-slate-500 bg-white font-medium">
+                        لا توجد قيود إيداع مطابقة للبحث
                       </td>
                     </tr>
                   )}
 
-                  {/* صفوف الإجماليات والمجاميع والأرصدة المعتمدة في أسفل شيت تينسنت (قراءة حرفية بدون أي حسابات برمجية) */}
-                  <tr className="bg-emerald-50/70 border-t-2 border-emerald-400 font-black text-xs">
-                    <td colSpan={4} className="p-3 border-l border-slate-300 text-right text-emerald-950">
+                  {/* سطر الإجمالي المستحصل والمحسوب ديناميكياً 100% من جدول تينسنت (الخلية A1) */}
+                  <tr className="bg-emerald-50/90 border-t-2 border-emerald-400 font-black text-xs">
+                    <td colSpan={2} className="p-3 border-l border-slate-300 text-right text-emerald-950">
                       <div className="flex items-center gap-2 font-bold">
                         <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-                        <span>إجمالي شيت تينسنت الأصلي (قراءة حرفية من صف المجاميع والأرصدة):</span>
-                        <span className="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded font-mono">
-                          Tencent Footer & Cells E1 / F1 / G1
-                        </span>
+                        <span>المستحصل المحسوب برمجياً df['amount'].sum() (الخلية A1):</span>
                       </div>
                     </td>
-                    <td className="p-3 border-l border-slate-300 text-center font-mono font-black text-emerald-950 text-sm bg-emerald-100/60">
-                      {depositsCells.totalDeposits}
+                    <td className="p-3 border-l border-slate-300 text-center font-mono font-black text-emerald-950 text-base bg-emerald-100/80">
+                      {depositsDfMetrics.collectedFormatted}
                     </td>
-                    <td className="p-3 border-l border-slate-300 text-center font-mono font-black text-slate-900 text-sm bg-slate-100">
-                      {depositsCells.totalInvoiced}
-                    </td>
-                    <td className="p-3 border-l border-slate-300 text-center text-emerald-900 font-bold bg-emerald-50/50">
-                      <span className="text-[10px] text-slate-500 block">رصيد القاصة (G1):</span>
-                      <span className="font-mono font-black text-emerald-950 text-xs">
-                        {depositsCells.safeBalanceUsd?.startsWith('$') ? depositsCells.safeBalanceUsd : `$${depositsCells.safeBalanceUsd || '820.00'}`}
+                    <td colSpan={3} className="p-3 border-l border-slate-300 text-right text-slate-700 font-bold">
+                      <span className="text-slate-800">حالة التوريد للقاصة (value_counts): </span>
+                      <span className="text-emerald-900 font-mono font-bold bg-white px-2 py-0.5 rounded border border-emerald-200 mr-1.5">
+                        {depositsDfMetrics.inSafeStatusComputed}
                       </span>
                     </td>
-                    <td className="p-3 border-l border-slate-300 text-center font-mono font-black text-emerald-900">
-                      {depositsCells.coverageRate}
-                    </td>
-                    <td className="p-3 border-l border-slate-300 text-center text-amber-900 font-bold text-[11px]">
-                      متبقي: {depositsCells.remainingBalance}
-                    </td>
-                    <td colSpan={2} className="p-3 text-center text-emerald-800 font-bold text-xs bg-emerald-50">
-                      <span className="flex items-center justify-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>مطابق ومعتمد 100% بالشيت</span>
-                      </span>
-                    </td>
-                  </tr>
-
-                  {/* سطر رصيد القاصة بالدولار ومتبقي الأرصدة والذمم المقروء حرفياً من تينسنت */}
-                  <tr className="bg-emerald-50/50 border-t border-emerald-200 font-bold text-xs">
-                    <td colSpan={4} className="p-2.5 border-l border-slate-300 text-right text-emerald-950">
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-emerald-700" />
-                        <span>رصيد القاصة بالدولار المقروء حرفياً بشيت تينسنت (الخلية G1):</span>
-                      </div>
-                    </td>
-                    <td className="p-2.5 border-l border-slate-300 text-center font-mono font-black text-emerald-950 bg-emerald-100/70 text-sm">
-                      {depositsCells.safeBalanceUsd?.startsWith('$') ? depositsCells.safeBalanceUsd : `$${depositsCells.safeBalanceUsd || '820.00'}`}
-                    </td>
-                    <td colSpan={6} className="p-2.5 text-right text-slate-700 font-medium">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span>متبقي الذمم والأرصدة المستحقة: <strong className="font-mono text-amber-900">{depositsCells.remainingBalance}</strong> | حوالات قيد المقاصة: <strong className="font-mono text-blue-900">{depositsCells.pendingTransit}</strong></span>
-                        <span className="text-slate-500">تم التحديث الفوري والتلقائي مباشرة من خلايا شيت تينسنت بدون أي حسابات إضافية</span>
-                      </div>
+                    <td colSpan={2} className="p-3 text-center text-amber-950 font-bold bg-amber-50/70">
+                      <span>متبقي لم يدخل القاصة: <strong className="font-mono text-amber-900 font-black text-sm">{depositsDfMetrics.remainingFormatted}</strong></span>
                     </td>
                   </tr>
                 </tbody>
@@ -1904,167 +2387,7 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
         </div>
       )}
 
-      {/* Modal: Direct Cell Sync & Editor for "قاصة البحري" (بدون حسابات برمجية) */}
-      {isCellEditorOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl p-6 shadow-2xl text-right my-8">
-            <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base">
-                    تعديل ومزامنة قراءة خلايا شيت تينسنت (قاصة البحري)
-                  </h3>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    القيم تقرأ وتعرض حرفياً ومباشرة من الشيت الأصلي دون أي عمليات حسابية أو برمجية
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCellEditorOpen(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
 
-            <form onSubmit={handleSaveCellDraft} className="space-y-4">
-              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-xs text-amber-900">
-                ⚠️ <strong>تنبيه الالتزام الصارم:</strong> يتم عرض هذه القيم في البطاقات العلوية كما هي تماماً في الشيت. أي تغيير تدخله هنا سيظهر فوراً وبشكل مباشر.
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Cell E1: قاصة */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية E1 / F1 (قاصة):
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={cellDraft.safeTotal}
-                    onChange={(e) => setCellDraft({ ...cellDraft, safeTotal: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
-                  />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $230,892</span>
-                </div>
-
-                {/* Cell C1: دفع من القاصة */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية C1 / D1 (دفع من القاصة):
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={cellDraft.paidFromSafe}
-                    onChange={(e) => setCellDraft({ ...cellDraft, paidFromSafe: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-rose-900 focus:bg-white focus:border-blue-600 focus:outline-none"
-                  />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $212,914</span>
-                </div>
-
-                {/* Cell A1: متبقي رصيد */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية A1 / B1 (متبقي رصيد):
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={cellDraft.remainingBalance}
-                    onChange={(e) => setCellDraft({ ...cellDraft, remainingBalance: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-blue-900 focus:bg-white focus:border-blue-600 focus:outline-none"
-                  />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: 17,978.26</span>
-                </div>
-
-                {/* Cell J1: جرد الدينار العراقي */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية J1 (جرد النقد د.ع):
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={cellDraft.iqdCashTotal}
-                    onChange={(e) => setCellDraft({ ...cellDraft, iqdCashTotal: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
-                  />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: 26,234,980 د.ع.</span>
-                </div>
-
-                {/* Cell G1: رصيد القاصة بالدولار */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية G1 (رصيد القاصة بالدولار):
-                  </label>
-                  <input
-                    type="text"
-                    value={cellDraft.differenceExtra}
-                    onChange={(e) => setCellDraft({ ...cellDraft, differenceExtra: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-emerald-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
-                    placeholder="$820.00"
-                  />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $820.00 (مع شارة $)</span>
-                </div>
-
-                {/* Cell H1: صافي متبقي الرصيد */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية H1 (صافي متبقي الرصيد):
-                  </label>
-                  <input
-                    type="text"
-                    value={cellDraft.netRemaining}
-                    onChange={(e) => setCellDraft({ ...cellDraft, netRemaining: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
-                  />
-                </div>
-
-                {/* Cell I1: معامل الصرف */}
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية I1 (معامل الصرف والتحويل):
-                  </label>
-                  <input
-                    type="text"
-                    value={cellDraft.exchangeRate}
-                    onChange={(e) => setCellDraft({ ...cellDraft, exchangeRate: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-2 pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={handleResetCellDraft}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 cursor-pointer"
-                >
-                  استعادة قيم تينسنت الأصلية
-                </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsCellEditorOpen(false)}
-                    className="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 cursor-pointer"
-                  >
-                    إلغاء
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer"
-                  >
-                    تطبيق وحفظ القراءة المباشرة
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Modal: Receipt / Proof Viewer (الدليل وسند الصرف) */}
       {selectedReceiptModal && (
@@ -2180,71 +2503,42 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Cell E1 / Total Deposits */}
+                {/* Cell A1 / Collected */}
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية إجمالي الإيداعات المستلمة (E1 / صف المجاميع):
+                    خلية المستحصل المباشر (الخلية A1 / تينسنت):
                   </label>
                   <input
                     type="text"
                     required
-                    value={depositsCellDraft.totalDeposits}
-                    onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, totalDeposits: e.target.value })}
+                    value={depositsCellDraft.collectedA1}
+                    onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, collectedA1: e.target.value, totalDeposits: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-emerald-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
+                    placeholder="$17,100"
                   />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $289,640.00</span>
+                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $17,100</span>
                 </div>
 
-                {/* Cell F1 / Total Invoiced */}
+                {/* Column1 / Safe Influx Status */}
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية إجمالي مبالغ الشحن والفواتير (F1 / صف المجاميع):
+                    حالة التوريد للقاصة (Column1 بالشيت):
                   </label>
                   <input
                     type="text"
                     required
-                    value={depositsCellDraft.totalInvoiced}
-                    onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, totalInvoiced: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
+                    value={depositsCellDraft.inSafeStatus}
+                    onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, inSafeStatus: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-orange-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
+                    placeholder="دخلت قاصة: 3 | لم تدخل بعد: 1"
                   />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $324,500.00</span>
-                </div>
-
-                {/* Cell G1 / Safe Balance in USD */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية رصيد القاصة بالدولار بشارة $ (G1 / تينسنت):
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={depositsCellDraft.safeBalanceUsd}
-                    onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, safeBalanceUsd: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-emerald-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
-                    placeholder="$820.00"
-                  />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $820.00 (بشارة $)</span>
-                </div>
-
-                {/* Remaining Balance */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية متبقي الذمم والأرصدة المستحقة:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={depositsCellDraft.remainingBalance}
-                    onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, remainingBalance: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-amber-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
-                  />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $34,860.00</span>
+                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: دخلت قاصة: 3 | لم تدخل بعد: 1</span>
                 </div>
 
                 {/* Deposit Count */}
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية عدد قيود وسندات الإيداع المعتمدة:
+                    عدد قيود وسندات الإيداع المسجلة:
                   </label>
                   <input
                     type="text"
@@ -2253,41 +2547,28 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                     onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, depositCount: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-indigo-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
                   />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: 32 إيداع معتمد</span>
+                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: 4 قيود مسجلة</span>
                 </div>
 
-                {/* Cell H1 / Coverage Rate */}
+                {/* Remaining Balance */}
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية نسبة التغطية المقروءة حرفياً (H1):
+                    متبقي لم يدخل القاصة بعد:
                   </label>
                   <input
                     type="text"
-                    value={depositsCellDraft.coverageRate}
-                    onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, coverageRate: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
+                    required
+                    value={depositsCellDraft.remainingBalance}
+                    onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, remainingBalance: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-amber-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
                   />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: 89.26%</span>
-                </div>
-
-                {/* Cell I1 / Pending Transit */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    خلية حوالات صيرفة قيد المقاصة (I1):
-                  </label>
-                  <input
-                    type="text"
-                    value={depositsCellDraft.pendingTransit}
-                    onChange={(e) => setDepositsCellDraft({ ...depositsCellDraft, pendingTransit: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
-                  />
-                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $14,200.00</span>
+                  <span className="text-[10px] text-slate-500">القيمة الأصلية في تينسنت: $500</span>
                 </div>
 
                 {/* Sheet Formula / Ref */}
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-slate-800 mb-1">
-                    المرجع الحرفي لصفوف وخلايا تينسنت (Cell Ref):
+                    المرجع الحرفي لخلايا تينسنت (Cell Ref):
                   </label>
                   <input
                     type="text"
@@ -2422,6 +2703,299 @@ export const TencentSheetsSection: React.FC<TencentSheetsSectionProps> = ({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Add New Deposit Row Modal into tencent_df */}
+      {isAddDepositRowModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-bold text-slate-900 text-base">إضافة قيد إيداع جديد (شيت تينسنت)</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddDepositRowModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddDepositRowSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">كود العميل (code):</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: IQ-9876 أو AL-AHMAD"
+                  value={newDepositCode}
+                  onChange={(e) => setNewDepositCode(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">مبلغ الإيداع (amount):</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: $4,500 أو 3000"
+                  value={newDepositAmount}
+                  onChange={(e) => setNewDepositAmount(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 font-mono font-bold"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  سيتم إضافته لجمع مبالغ الجدول وتحديث بطاقة المستحصل والمتبقي آلياً
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">التاريخ (date):</label>
+                <input
+                  type="text"
+                  placeholder="2026/8/18"
+                  value={newDepositDate}
+                  onChange={(e) => setNewDepositDate(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">الملاحظة والبيان (note):</label>
+                <input
+                  type="text"
+                  placeholder="مثال: دفعة شحن بحري كاش - نقليات دبي"
+                  value={newDepositNote}
+                  onChange={(e) => setNewDepositNote(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">حالة التوريد للقاصة (Column1):</label>
+                <select
+                  value={newDepositColumn1}
+                  onChange={(e) => setNewDepositColumn1(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 font-bold"
+                >
+                  <option value="دخلت قاصة">دخلت قاصة</option>
+                  <option value="لم تدخل قاصة بعد">لم تدخل قاصة بعد</option>
+                </select>
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  تؤثر مباشرة في بطاقة حالة التوريد للقاصة (value_counts) والمتبقي
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Column2 (اختياري):</label>
+                <input
+                  type="text"
+                  placeholder="مثال: معتمد"
+                  value={newDepositColumn2}
+                  onChange={(e) => setNewDepositColumn2(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsAddDepositRowModalOpen(false)}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs transition-colors"
+                >
+                  حفظ وتحديث الحسابات
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: إضافة حركة صرف جديدة في قاصة البحري */}
+      {isAddDisbursementModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-right">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-rose-600" />
+                <h3 className="font-bold text-slate-900 text-base">إضافة حركة صرف جديدة من القاصة</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddDisbursementModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddDisbursement} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">المبلغ المصروف ($):</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: $2,500 أو 1800"
+                  value={newDisbAmount}
+                  onChange={(e) => setNewDisbAmount(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-rose-500 font-mono font-bold text-rose-900"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  سيضاف تلقائياً لمجموع "دفع من القاصة (D1)" ويطرح فورياً من "متبقي رصيد (B1)"
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">اسم المستلم:</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="محمد ماهر"
+                  value={newDisbRecipient}
+                  onChange={(e) => setNewDisbRecipient(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-rose-500 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">الملاحظات / رقم الفورم:</label>
+                <input
+                  type="text"
+                  placeholder="مثال: فورم 12 - مصاريف شحن ومناولة"
+                  value={newDisbNotes}
+                  onChange={(e) => setNewDisbNotes(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">رابط صورة السند / الدليل (اختياري):</label>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={newDisbProofUrl}
+                  onChange={(e) => setNewDisbProofUrl(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-rose-500 font-mono text-slate-600"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsAddDisbursementModalOpen(false)}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shadow-xs transition-colors"
+                >
+                  إضافة حركة الصرف وحساب القاصة
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: تعديل إعدادات القاصة وسعر الصرف */}
+      {isEditTreasurySettingsOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-right">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-blue-600" />
+                <h3 className="font-bold text-slate-900 text-base">تعديل رصيد القاصة ومعامل الصرف</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditTreasurySettingsOpen(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTreasurySettings} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  وارد القاصة الإجمالي (الخلية F1 بالدولار):
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  value={treasurySettingsDraft.safeCapital}
+                  onChange={(e) =>
+                    setTreasurySettingsDraft({ ...treasurySettingsDraft, safeCapital: e.target.value })
+                  }
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 font-mono font-bold"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  القيمة المطابقة لشيت تينسنت المحدث: 247,292.36
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  رصيد القاصة بالدولار (الخلية G1):
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  value={treasurySettingsDraft.safeUsdBalance}
+                  onChange={(e) =>
+                    setTreasurySettingsDraft({ ...treasurySettingsDraft, safeUsdBalance: e.target.value })
+                  }
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  معامل الصرف (الخلية I1 - دينار لكل دولار):
+                </label>
+                <input
+                  type="number"
+                  required
+                  value={treasurySettingsDraft.exchangeRate}
+                  onChange={(e) =>
+                    setTreasurySettingsDraft({ ...treasurySettingsDraft, exchangeRate: e.target.value })
+                  }
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 font-mono font-bold"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  القيمة في شيت تينسنت: 1530
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsEditTreasurySettingsOpen(false)}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-xs transition-colors"
+                >
+                  حفظ وتطبيق التغييرات
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -154,7 +154,7 @@ export default function App() {
     setTimeout(() => setLiveSyncToast(null), 4000);
   };
 
-  // Trigger Daily Update (simulating 1 day progression)
+  // Trigger Daily Update (simulating 1 day progression with strict numeric validation)
   const handleTriggerDailyUpdate = () => {
     const newLogs: DailyUpdateLog[] = [];
     const timestamp = new Date().toISOString();
@@ -165,24 +165,44 @@ export default function App() {
         if (!waypoints || waypoints.length < 2) return c;
 
         const prevCoords = c.currentLocation.coordinates;
-        const currentIdx = c.currentWaypointIndex;
+        const currentIdx = typeof c.currentWaypointIndex === 'number' && !isNaN(c.currentWaypointIndex)
+          ? Math.max(0, Math.min(waypoints.length - 1, c.currentWaypointIndex))
+          : 0;
+
         let nextIdx = currentIdx;
         let newCoords: Coordinate = { ...prevCoords };
-        let newProgress = Math.min(100, c.progressPercent + Math.floor(Math.random() * 5 + 5));
+
+        // تحققات دقيقة ومحمية لنسبة التقدم لتجنب أي حذف، تقريب عشوائي أو فقدان للصفر (0)
+        const rawProgress = typeof c.progressPercent === 'number' ? c.progressPercent : parseFloat(String(c.progressPercent));
+        const validBaseProgress = !isNaN(rawProgress) && isFinite(rawProgress)
+          ? Math.max(0, Math.min(100, rawProgress))
+          : 0;
+
+        const progressDelta = Math.floor(Math.random() * 5 + 5);
+        let newProgress = Math.min(100, Math.max(0, Number((validBaseProgress + progressDelta).toFixed(2))));
 
         if (currentIdx < waypoints.length - 1) {
           nextIdx = currentIdx + 1;
           const targetWp = waypoints[nextIdx];
+          const prevLat = typeof prevCoords?.lat === 'number' && !isNaN(prevCoords.lat) ? prevCoords.lat : 0;
+          const prevLng = typeof prevCoords?.lng === 'number' && !isNaN(prevCoords.lng) ? prevCoords.lng : 0;
+          const targetLat = typeof targetWp?.lat === 'number' && !isNaN(targetWp.lat) ? targetWp.lat : prevLat;
+          const targetLng = typeof targetWp?.lng === 'number' && !isNaN(targetWp.lng) ? targetWp.lng : prevLng;
+
           newCoords = {
-            lat: Number((prevCoords.lat * 0.4 + targetWp.lat * 0.6).toFixed(4)),
-            lng: Number((prevCoords.lng * 0.4 + targetWp.lng * 0.6).toFixed(4)),
+            lat: Number((prevLat * 0.4 + targetLat * 0.6).toFixed(4)),
+            lng: Number((prevLng * 0.4 + targetLng * 0.6).toFixed(4)),
           };
         } else {
-          newCoords = c.destinationPort.coordinates;
+          newCoords = c.destinationPort?.coordinates || prevCoords;
           newProgress = 100;
         }
 
-        const distanceTraveled = Math.floor(c.dailyMovementNauticalMiles + (Math.random() * 30 - 15));
+        const rawMovement = typeof c.dailyMovementNauticalMiles === 'number'
+          ? c.dailyMovementNauticalMiles
+          : parseFloat(String(c.dailyMovementNauticalMiles));
+        const validMovement = !isNaN(rawMovement) && isFinite(rawMovement) ? rawMovement : 200;
+        const distanceTraveled = Math.max(0, Math.floor(validMovement + (Math.random() * 30 - 15)));
 
         newLogs.push({
           id: `log-${Date.now()}-${c.id}`,
@@ -197,7 +217,7 @@ export default function App() {
           details:
             newProgress >= 100
               ? `وصلت الحاوية إلى ${c.destinationPort.name} بنجاح وبدأت إجراءات التفريغ الجمركي.`
-              : `تم التحديث التلقائي اليومي بنجاح. أبحرت السفينة مسافة ${distanceTraveled} ميل بحري خلال آخر 24 ساعة.`,
+              : `تم التحديث التلقائي اليومي بنجاح. أبحرت السفينة مسافة ${distanceTraveled} ميل بحري خلال آخر 24 ساعة. نسبة الإنجاز: ${newProgress}%.`,
         });
 
         return {
@@ -215,6 +235,8 @@ export default function App() {
     );
 
     setUpdateLogs((prev) => [...newLogs, ...prev]);
+    setLiveSyncToast('تم تنفيذ التحديث اليومي والتحقق الحسابي بدقة وحفظ الحالة الحية.');
+    setTimeout(() => setLiveSyncToast(null), 3500);
   };
 
   return (

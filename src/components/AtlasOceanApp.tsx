@@ -16,6 +16,7 @@ import { Container } from '../types';
 import { MapViewer } from './MapViewer';
 import { ContainerDetailsModal } from './ContainerDetailsModal';
 import { YardInventoryModal } from './YardInventoryModal';
+import { PagePrintModal } from './PagePrintModal';
 import { TencentSheetsSection } from './TencentSheetsSection';
 import {
   RotateCcw,
@@ -90,6 +91,14 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
   // Yard Inventory printable modal
   const [isYardModalOpen, setIsYardModalOpen] = useState<boolean>(false);
+
+  // Dedicated Page Printable Modal for current page
+  const [printModalConfig, setPrintModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    data: any[];
+    filename: string;
+  } | null>(null);
 
   // Tracking map view mode
   const [showFullMap, setShowFullMap] = useState<boolean>(false);
@@ -181,7 +190,8 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
   };
 
   // Helper to render top action buttons
-  const renderDownloadButtons = (dataToDownload: any[], filename: string) => {
+  const renderDownloadButtons = (dataToDownload: any[], filename: string, customTitle?: string) => {
+    const formattedTitle = customTitle || filename.replace(/_/g, ' ');
     return (
       <div className="no-print mb-4 flex flex-wrap items-center gap-3">
         <button
@@ -194,8 +204,22 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => window.print()}
-          className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 px-5 py-2.5 rounded-lg font-bold text-sm shadow transition-colors cursor-pointer"
+          onClick={() => {
+            setPrintModalConfig({
+              isOpen: true,
+              title: formattedTitle,
+              data: dataToDownload,
+              filename,
+            });
+            try {
+              window.focus();
+              window.print();
+            } catch (e) {
+              console.warn('Direct window.print() inside iframe notice:', e);
+            }
+          }}
+          className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 px-5 py-2.5 rounded-lg font-bold text-sm shadow transition-colors cursor-pointer active:scale-95"
+          title="معاينة وطباعة وتصدير التقرير الحالي"
         >
           <Printer className="w-4 h-4 text-slate-600" />
           <span>🖨️ طباعة الصفحة الحالية</span>
@@ -1345,6 +1369,18 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
           availableShipments={availableContainers}
           initialShipment={selectedContainerFilter}
           allRows={rawData}
+        />
+      )}
+
+      {/* Modal for Page Print and Export */}
+      {printModalConfig && printModalConfig.isOpen && (
+        <PagePrintModal
+          isOpen={printModalConfig.isOpen}
+          onClose={() => setPrintModalConfig(null)}
+          title={printModalConfig.title}
+          data={printModalConfig.data}
+          filename={printModalConfig.filename}
+          containerFilter={selectedContainerFilter}
         />
       )}
     </div>
