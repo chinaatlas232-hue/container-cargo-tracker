@@ -1,6 +1,6 @@
 {
   "name": "Container Cargo Tracker",
-  "description": "منظومة تتبع الحاويات والشحنات وإدارة شيتات تينسنت للشحن البحري والجوي مع لوحة التحكم وكشوفات الكمارك والديون",
+  "description": "منظومة أطلس المحيط لتتبع وإدارة الشحنات والحاويات مع لوحة التحكم وكشوفات الكمارك والديون والاستحصالات",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

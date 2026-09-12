@@ -17,7 +17,6 @@ import { MapViewer } from './MapViewer';
 import { ContainerDetailsModal } from './ContainerDetailsModal';
 import { YardInventoryModal } from './YardInventoryModal';
 import { PagePrintModal } from './PagePrintModal';
-import { TencentSheetsSection } from './TencentSheetsSection';
 import {
   RotateCcw,
   Printer,
@@ -32,6 +31,9 @@ import {
   MapPin,
   Ship,
   Plane,
+  Filter,
+  Globe,
+  Link2,
   Radio,
   Sparkles,
   ExternalLink,
@@ -44,8 +46,6 @@ interface AtlasOceanAppProps {
 }
 
 type PageKey =
-  | 'marine_tencent'
-  | 'air_tencent'
   | 'dashboard'
   | 'customs'
   | 'sponsors'
@@ -69,22 +69,25 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
   selectedContainer,
   onSelectContainer,
 }) => {
-  const [currentPage, setCurrentPage] = useState<PageKey>('marine_tencent');
+  const [currentPage, setCurrentPage] = useState<PageKey>('dashboard');
   const [rawData, setRawData] = useState<AtlasRow[]>([]);
   const [trackingData, setTrackingData] = useState<TrackingRow[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
+  const [transportFilter, setTransportFilter] = useState<'الكل' | 'الشحن البحري' | 'الشحن الجوي'>('الكل');
   const [selectedContainerFilter, setSelectedContainerFilter] = useState<string>('الكل');
   const [selectedCodeFilter, setSelectedCodeFilter] = useState<string>('الكل');
   const [selectedSponsorFilter, setSelectedSponsorFilter] = useState<string>('الكل');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [displayMode, setDisplayMode] = useState<'all' | 'marine' | 'air'>('all');
+
+  // Live Google Sheets Sync Status
+  const [lastSyncTime, setLastSyncTime] = useState<string>(() => new Date().toLocaleTimeString('ar-IQ'));
+  const [syncToast, setSyncToast] = useState<string | null>(null);
 
   // Mobile sidebar toggle
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
-  const [selectedMarineSheetId, setSelectedMarineSheetId] = useState<string>('marine-collections');
 
   // Detailed container modal
   const [modalContainer, setModalContainer] = useState<Container | null>(null);
@@ -111,6 +114,10 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       if (res.error) setError(res.error);
       setRawData(res.df);
       setTrackingData(res.dfTracking);
+      const nowStr = new Date().toLocaleTimeString('ar-IQ');
+      setLastSyncTime(nowStr);
+      setSyncToast(`✓ تم بنجاح مزامنة وتحديث (${res.df.length}) شحنة وحاوية مباشرة من Google Sheets!`);
+      setTimeout(() => setSyncToast(null), 6000);
     } catch (e: any) {
       setError(e?.message || 'خطأ في تحميل البيانات');
     } finally {
@@ -121,6 +128,20 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
   useEffect(() => {
     loadAllData();
   }, []);
+
+  // Transport Counts
+  const transportCounts = useMemo(() => {
+    let all = 0;
+    let marine = 0;
+    let air = 0;
+    rawData.forEach((r) => {
+      all++;
+      const t = String(r['نوع النقل'] || '');
+      if (t.includes('بحري')) marine++;
+      else if (t.includes('جوي')) air++;
+    });
+    return { all, marine, air };
+  }, [rawData]);
 
   // Filter options lists
   const availableContainers = useMemo(() => {
@@ -150,13 +171,17 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
     return ['الكل', ...Array.from(list).sort()];
   }, [rawData]);
 
-  // Apply Sidebar Filters
+  // Apply Transport and Sidebar Filters
   const filteredDf = useMemo(() => {
     return rawData.filter((row) => {
       const cont = String(row['رقم الحاوية'] || '').trim();
       const code = String(row['code'] || row['الكود'] || '').trim();
       const sponsor = String(row['الكفيل'] || '').trim();
+      const transport = String(row['نوع النقل'] || '').trim();
 
+      if (transportFilter !== 'الكل' && transport !== transportFilter) {
+        return false;
+      }
       if (selectedContainerFilter !== 'الكل' && cont !== selectedContainerFilter) {
         return false;
       }
@@ -168,7 +193,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       }
       return true;
     });
-  }, [rawData, selectedContainerFilter, selectedCodeFilter, selectedSponsorFilter]);
+  }, [rawData, transportFilter, selectedContainerFilter, selectedCodeFilter, selectedSponsorFilter]);
 
   // Handle opening container modal
   const handleContainerClick = (containerNo: string) => {
@@ -245,34 +270,25 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       });
     }
 
-    const marineDf = dashDf.filter((r) =>
-      String(r['رقم الحاوية'] || '').toUpperCase().startsWith('RQ')
-    );
-    const airDf = dashDf.filter((r) =>
-      String(r['رقم الحاوية'] || '').toUpperCase().startsWith('RA')
-    );
-
-    const activeViewDf =
-      displayMode === 'marine' ? marineDf : displayMode === 'air' ? airDf : dashDf;
-
     // Metrics
-    const totalOrders = activeViewDf.length;
-    const totalWeight = activeViewDf.reduce((acc, r) => acc + (r['الوزن'] || 0), 0);
-    const totalCtns = activeViewDf.reduce((acc, r) => acc + (r['عدد الكارتون'] || 0), 0);
-    const totalVolume = activeViewDf.reduce((acc, r) => acc + (r['حجم'] || 0), 0);
+    const totalOrders = dashDf.length;
+    const totalWeight = dashDf.reduce((acc, r) => acc + (r['الوزن'] || 0), 0);
+    const totalCtns = dashDf.reduce((acc, r) => acc + (r['عدد الكارتون'] || 0), 0);
+    const totalVolume = dashDf.reduce((acc, r) => acc + (r['حجم'] || 0), 0);
 
     const uniqueClients = new Set(
-      activeViewDf.map((r) => String(r['code'] || r['Shipping mark'] || '')).filter(Boolean)
+      dashDf.map((r) => String(r['code'] || r['Shipping mark'] || '')).filter(Boolean)
     ).size;
     const uniqueContainers = new Set(
-      activeViewDf.map((r) => String(r['رقم الحاوية'] || '')).filter(Boolean)
+      dashDf.map((r) => String(r['رقم الحاوية'] || '')).filter(Boolean)
     ).size;
 
-    const totalOfficePaid = activeViewDf.reduce((acc, r) => acc + (r['المكتب دفع'] || 0), 0);
-    const totalClientPaid = activeViewDf.reduce((acc, r) => acc + (r['الزبون دفع'] || 0), 0);
-    const totalAmountAll = activeViewDf.reduce((acc, r) => acc + (r['المجموع'] || 0), 0);
+    const totalOfficePaid = dashDf.reduce((acc, r) => acc + (r['المكتب دفع'] || 0), 0);
+    const totalClientPaid = dashDf.reduce((acc, r) => acc + (r['الزبون دفع'] || 0), 0);
+    const totalAmountAll = dashDf.reduce((acc, r) => acc + (r['المجموع'] || 0), 0);
 
     const defaultCols = [
+      'نوع النقل',
       'code',
       'Shipping mark',
       'عدد الكارتون',
@@ -304,7 +320,67 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
     return (
       <div>
-        <h1 className="atlas-h1">📊 لوحة التحكم الرئيسية</h1>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-2">
+          <h1 className="atlas-h1 mb-0">📊 لوحة التحكم الرئيسية</h1>
+
+          {/* Top 3 Transport Options Filter (الخيارات الثلاثة في أعلى الشاشة) */}
+          <div className="no-print flex items-center gap-1.5 bg-slate-900 p-1.5 rounded-xl border border-slate-700 shadow-sm self-start md:self-auto">
+            <button
+              type="button"
+              onClick={() => setTransportFilter('الكل')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                transportFilter === 'الكل'
+                  ? 'bg-blue-600 text-white shadow-md ring-1 ring-blue-400'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>الكل</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                transportFilter === 'الكل' ? 'bg-blue-700 text-blue-100' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {transportCounts.all}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTransportFilter('الشحن البحري')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                transportFilter === 'الشحن البحري'
+                  ? 'bg-teal-600 text-white shadow-md ring-1 ring-teal-400'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Ship className="w-3.5 h-3.5 text-teal-300" />
+              <span>الشحن البحري</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                transportFilter === 'الشحن البحري' ? 'bg-teal-700 text-teal-100' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {transportCounts.marine}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTransportFilter('الشحن الجوي')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                transportFilter === 'الشحن الجوي'
+                  ? 'bg-purple-600 text-white shadow-md ring-1 ring-purple-400'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Plane className="w-3.5 h-3.5 text-purple-300" />
+              <span>الشحن الجوي</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                transportFilter === 'الشحن الجوي' ? 'bg-purple-700 text-purple-100' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {transportCounts.air}
+              </span>
+            </button>
+          </div>
+        </div>
+
         <hr className="border-slate-700 my-4" />
 
         {/* Smart Search */}
@@ -318,43 +394,6 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
               placeholder="🔍 بحث ذكي (ابحث برقم الكود، اسم الكفيل، أو رقم الحاوية)..."
               className="w-full bg-slate-900 border border-slate-700 rounded-lg pr-10 pl-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-sm"
             />
-          </div>
-        </div>
-
-        {/* Display Mode Radio */}
-        <div className="no-print mb-5 bg-slate-900 p-3 rounded-lg border border-slate-800">
-          <div className="text-slate-300 font-bold text-sm mb-2">طريقة العرض:</div>
-          <div className="flex flex-wrap gap-4 text-sm font-semibold">
-            <label className="flex items-center gap-2 cursor-pointer text-white">
-              <input
-                type="radio"
-                name="displayMode"
-                checked={displayMode === 'all'}
-                onChange={() => setDisplayMode('all')}
-                className="text-blue-600 focus:ring-0"
-              />
-              <span>📄 شامل (عرض الكل)</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-white">
-              <input
-                type="radio"
-                name="displayMode"
-                checked={displayMode === 'marine'}
-                onChange={() => setDisplayMode('marine')}
-                className="text-blue-600 focus:ring-0"
-              />
-              <span>🚢 الشحن البحري (RQ)</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-white">
-              <input
-                type="radio"
-                name="displayMode"
-                checked={displayMode === 'air'}
-                onChange={() => setDisplayMode('air')}
-                className="text-blue-600 focus:ring-0"
-              />
-              <span>✈️ الشحن الجوي (RA)</span>
-            </label>
           </div>
         </div>
 
@@ -420,29 +459,23 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
         </div>
 
         <hr className="border-slate-700 my-4" />
-        {renderDownloadButtons(activeViewDf, 'لوحة_التحكم_أطلس_المحيط')}
+        {renderDownloadButtons(dashDf, 'لوحة_التحكم_أطلس_المحيط')}
 
-        {/* Marine RQ Table */}
-        {['all', 'marine'].includes(displayMode) && (
-          <div className="mb-6">
-            <h3 className="text-lg font-bold text-slate-200 mb-2">🚢 جدول الشحن البحري (RQ)</h3>
-            <AtlasCustomTable
-              data={filterCols(marineDf)}
-              onContainerClick={handleContainerClick}
-            />
+        {/* General Shipments Table */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-lg font-bold text-slate-200">
+              📦 جدول كشف الشحنات والطرود العام ({transportFilter === 'الكل' ? 'الكل - بحري وجوي' : transportFilter})
+            </h3>
+            <span className="text-xs text-slate-400 font-bold">
+              إجمالي السجلات المعروضة: {dashDf.length.toLocaleString()}
+            </span>
           </div>
-        )}
-
-        {/* Air RA Table */}
-        {['all', 'air'].includes(displayMode) && (
-          <div className="mb-6">
-            <h3 className="text-lg font-bold text-slate-200 mb-2">✈️ جدول الشحن الجوي (RA)</h3>
-            <AtlasCustomTable
-              data={filterCols(airDf)}
-              onContainerClick={handleContainerClick}
-            />
-          </div>
-        )}
+          <AtlasCustomTable
+            data={filterCols(dashDf)}
+            onContainerClick={handleContainerClick}
+          />
+        </div>
       </div>
     );
   };
@@ -1178,86 +1211,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
           <hr className="border-slate-800 my-3" />
 
-          {/* Main Section 1: الشحن البحري (Main Sea Freight Section with 3 Dedicated Sheets) */}
-          <div className="mb-3.5 bg-slate-900/90 p-2.5 rounded-xl border border-blue-900/60 shadow-xs">
-            <div className="flex items-center justify-between text-xs font-black text-blue-400 mb-2 px-1">
-              <span className="flex items-center gap-1.5">
-                <Ship className="w-4 h-4 text-blue-400" />
-                <span className="text-sm font-black">الشحن البحري</span>
-              </span>
-              <span className="text-[10px] bg-blue-600/30 text-blue-300 px-1.5 py-0.5 rounded font-mono border border-blue-500/30">
-                3 شيتات حصرية
-              </span>
-            </div>
-
-            <div className="space-y-1">
-              {[
-                { id: 'marine-collections', label: '1. استحصال الشحن البحري', icon: '📑' },
-                { id: 'marine-treasury', label: '2. قاصة البحري', icon: '💼' },
-                { id: 'marine-deposits', label: '3. ايداعات الزبائن للبحري', icon: '📥' },
-              ].map((sub) => {
-                const isSelected = currentPage === 'marine_tencent' && selectedMarineSheetId === sub.id;
-                return (
-                  <button
-                    key={sub.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedMarineSheetId(sub.id);
-                      setCurrentPage('marine_tencent');
-                      setIsSidebarOpen(false);
-                    }}
-                    className={`w-full text-right px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-blue-600 text-white shadow-md font-black ring-1 ring-blue-400'
-                        : 'text-slate-200 bg-slate-950/70 hover:bg-slate-800 border border-slate-800/80 hover:text-white'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span>{sub.icon}</span>
-                      <span>{sub.label}</span>
-                    </span>
-                    {isSelected && <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Sub Section 2: الشحن الجوي (Sub Air Freight Section directly below) */}
-          <div className="mb-3.5 bg-slate-900/90 p-2.5 rounded-xl border border-rose-900/60 shadow-xs">
-            <div className="flex items-center justify-between text-xs font-black text-rose-400 mb-2 px-1">
-              <span className="flex items-center gap-1.5">
-                <Plane className="w-4 h-4 text-rose-400" />
-                <span className="text-sm font-black">الشحن الجوي</span>
-              </span>
-              <span className="text-[10px] bg-rose-600/30 text-rose-300 px-1.5 py-0.5 rounded font-mono border border-rose-500/30">
-                Tencent Live
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setCurrentPage('air_tencent');
-                setIsSidebarOpen(false);
-              }}
-              className={`w-full text-right px-2.5 py-2 rounded-lg text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
-                currentPage === 'air_tencent'
-                  ? 'bg-rose-600 text-white shadow-md font-black ring-1 ring-rose-400'
-                  : 'text-slate-200 bg-slate-950/70 hover:bg-slate-800 border border-slate-800/80 hover:text-white'
-              }`}
-            >
-              <span className="flex items-center gap-1.5">
-                <FileSpreadsheet className="w-3.5 h-3.5 text-rose-300" />
-                <span>شيتات تينسنت الجوية</span>
-              </span>
-              {currentPage === 'air_tencent' && (
-                <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-              )}
-            </button>
-          </div>
-
-          {/* Section 3: General Operational & Financial Reports */}
+          {/* General Operational & Financial Reports */}
           <div className="mb-4">
             <h3 className="text-xs font-bold text-slate-300 mb-2 px-1">📊 التقارير والإدارة التشغيلية</h3>
             <div className="space-y-1.5">
@@ -1271,7 +1225,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
                       setCurrentPage(opt.id);
                       setIsSidebarOpen(false);
                     }}
-                    className={`w-full text-right px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between transition-all cursor-pointer shadow-xs ${
+                    className={`w-full text-right px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between transition-all cursor-pointer shadow-xs ${
                       isActive
                         ? 'bg-blue-600 text-white shadow-md font-black ring-1 ring-blue-400'
                         : 'text-slate-200 bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 hover:text-white'
@@ -1309,17 +1263,105 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
           </button>
 
           <div className="p-2 rounded bg-slate-900/80 border border-slate-800 text-[10px] text-emerald-400 font-semibold text-center leading-relaxed">
-            متصل بملفات Google Sheets وتينسنت بنجاح ✔️
+            متصل بقاعدة بيانات أطلس و Google Sheets بنجاح ✔️
           </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <main className="flex-1 p-4 md:p-6 overflow-y-auto block-container w-full max-w-full">
+        {/* Live Google Sheets Direct Synchronization Ribbon (شريط الربط والمزامنة المباشرة مع Google Sheets) */}
+        <div className="no-print mb-4 bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 border border-emerald-500/40 rounded-xl p-3 shadow-lg flex flex-wrap items-center justify-between gap-3 text-white">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600/30 border border-emerald-500/50 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+              <FileSpreadsheet className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs sm:text-sm font-bold text-white">
+                  شريط الربط والمزامنة المباشرة مع Google Sheets
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  سحابي مباشر (3 جداول نشطة)
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] text-slate-300 mt-1">
+                <span className="text-slate-400">
+                  آخر مزامنة حية: <strong className="font-mono text-emerald-300">{lastSyncTime}</strong>
+                </span>
+                <span className="text-slate-700 hidden sm:inline">•</span>
+                <a
+                  href="https://docs.google.com/spreadsheets/d/1amOmnZgzn2bhWTgje_9W2sUK6V-OygWk/edit"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-300 hover:text-blue-200 hover:underline flex items-center gap-1 font-semibold"
+                  title="فتح شيت الشحن البحري في Google Sheets"
+                >
+                  <span>🚢 شيت البحري</span>
+                  <ExternalLink className="w-3 h-3 opacity-70" />
+                </a>
+                <span className="text-slate-700 hidden sm:inline">•</span>
+                <a
+                  href="https://docs.google.com/spreadsheets/d/1L97mB_YenJN-vCGfrcL-uLRV9i3haN-zd0gr1cbn-ZI/edit"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-300 hover:text-purple-200 hover:underline flex items-center gap-1 font-semibold"
+                  title="فتح شيت الشحن الجوي في Google Sheets"
+                >
+                  <span>✈️ شيت الجوي</span>
+                  <ExternalLink className="w-3 h-3 opacity-70" />
+                </a>
+                <span className="text-slate-700 hidden sm:inline">•</span>
+                <a
+                  href="https://docs.google.com/spreadsheets/d/1migl0qhyatX_Kf7LnpDhVVMlzdqAP4ID/edit"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-amber-300 hover:text-amber-200 hover:underline flex items-center gap-1 font-semibold"
+                  title="فتح شيت تتبع الحاويات في Google Sheets"
+                >
+                  <span>🛰️ شيت التتبع</span>
+                  <ExternalLink className="w-3 h-3 opacity-70" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={loadAllData}
+              disabled={isLoading}
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-md cursor-pointer active:scale-95"
+              title="مزامنة فورية مع شيتات Google سحابياً"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>{isLoading ? 'جارٍ المزامنة السحابية...' : 'مزامنة وتحديث فوري'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Sync Toast Feedback */}
+        {syncToast && (
+          <div className="no-print mb-4 p-3 bg-emerald-600 border border-emerald-500 text-white rounded-xl shadow-md flex items-center justify-between text-xs font-bold">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />
+              <span>{syncToast}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSyncToast(null)}
+              className="text-white hover:text-emerald-100 text-xs px-1 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {isLoading && (
           <div className="p-8 text-center bg-slate-900 rounded-xl border border-slate-800 my-4">
             <RotateCcw className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-2" />
-            <div className="text-base font-bold text-white">جاري تحميل بيانات Google Sheets ومنظومة أطلس وتينسنت...</div>
+            <div className="text-base font-bold text-white">جاري تحميل بيانات منظومة أطلس و Google Sheets...</div>
           </div>
         )}
 
@@ -1331,17 +1373,6 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
         {!isLoading && (
           <>
-            {currentPage === 'marine_tencent' && (
-              <TencentSheetsSection
-                category="marine"
-                allRows={rawData}
-                activeSheetId={selectedMarineSheetId}
-                onSelectSheet={(id) => setSelectedMarineSheetId(id)}
-              />
-            )}
-            {currentPage === 'air_tencent' && (
-              <TencentSheetsSection category="air" allRows={rawData} />
-            )}
             {currentPage === 'dashboard' && renderDashboard()}
             {currentPage === 'customs' && renderCustoms()}
             {currentPage === 'sponsors' && renderSponsors()}

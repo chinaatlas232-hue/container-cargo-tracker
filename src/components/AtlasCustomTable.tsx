@@ -206,6 +206,18 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
 
                   if (val === null || val === undefined || valStr === '' || valStr.toLowerCase() === 'nan') {
                     formattedVal = '-';
+                  } else if (colStr === 'نوع النقل') {
+                    formattedVal = valStr.includes('بحري') ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                        🚢 بحري
+                      </span>
+                    ) : valStr.includes('جوي') ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                        ✈️ جوي
+                      </span>
+                    ) : (
+                      valStr
+                    );
                   } else if (['رقم الحاوية', 'رقم الحاويات'].includes(colStr) && valStr && valStr !== '-' && !isRowTotal) {
                     // Static text only (no link/button) as requested
                     formattedVal = (

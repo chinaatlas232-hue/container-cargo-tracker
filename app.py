@@ -7,8 +7,8 @@ from datetime import datetime
 # إعداد الصفحة وتطبيق تنسيقات RTL مع خط Cairo وتنسيق بطاقات الخلايا الحية
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="منظومة شيتات تينسنت - لوحة التحكم المباشرة",
-    page_icon="🚢",
+    page_title="منظومة أطلس المحيط - لوحة التحكم المباشرة",
+    page_icon="🏢",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -375,20 +375,20 @@ if selected_sheet == "قاصة البحري":
     cells = compute_live_cells()
     st.session_state.live_cells = cells
     
-    st.markdown("### 📊 بطاقات خلايا تينسنت الحية [E1, C1, A1, J1]")
+    st.markdown("### 📊 بطاقات خلايا القاصة الحية [E1, C1, A1, J1]")
     
     b1, b2, b3, b4 = st.columns(4)
     
     with b1:
-        st.markdown('<span class="cell-badge" style="background:#dbeafe; color:#1e40af;">Tencent [E1 / F1]</span>', unsafe_allow_html=True)
+        st.markdown('<span class="cell-badge" style="background:#dbeafe; color:#1e40af;">الخلية [E1 / F1]</span>', unsafe_allow_html=True)
         st.metric(
             label="قاصة (الخلية E1)",
             value=cells["E1"],
-            help="القيمة الحية لوارد القاصة في شيت تينسنت"
+            help="القيمة الحية لوارد القاصة"
         )
         
     with b2:
-        st.markdown('<span class="cell-badge" style="background:#fee2e2; color:#991b1b;">Tencent [C1 / D1]</span>', unsafe_allow_html=True)
+        st.markdown('<span class="cell-badge" style="background:#fee2e2; color:#991b1b;">الخلية [C1 / D1]</span>', unsafe_allow_html=True)
         st.metric(
             label="دفع من القاصة (الخلية C1)",
             value=cells["C1"],
@@ -396,7 +396,7 @@ if selected_sheet == "قاصة البحري":
         )
         
     with b3:
-        st.markdown('<span class="cell-badge" style="background:#dcfce7; color:#166534;">Tencent [A1 / B1]</span>', unsafe_allow_html=True)
+        st.markdown('<span class="cell-badge" style="background:#dcfce7; color:#166534;">الخلية [A1 / B1]</span>', unsafe_allow_html=True)
         st.metric(
             label="متبقي رصيد (الخلية A1)",
             value=cells["A1"],
@@ -404,7 +404,7 @@ if selected_sheet == "قاصة البحري":
         )
         
     with b4:
-        st.markdown('<span class="cell-badge" style="background:#fef3c7; color:#92400e;">Tencent [J1]</span>', unsafe_allow_html=True)
+        st.markdown('<span class="cell-badge" style="background:#fef3c7; color:#92400e;">الخلية [J1]</span>', unsafe_allow_html=True)
         st.metric(
             label="جرد النقد د.ع (الخلية J1)",
             value=cells["J1"],

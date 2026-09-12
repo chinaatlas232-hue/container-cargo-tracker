@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 export interface AtlasRow {
   [key: string]: any;
   'No.'?: any;
+  'نوع النقل'?: 'الشحن البحري' | 'الشحن الجوي' | string;
   'code'?: string;
   'Shipping mark'?: string;
   'رقم دخول المخزن'?: string;
@@ -131,12 +132,14 @@ export async function fetchAtlasData(): Promise<{
     });
 
     // Standardize & combine marine + air
-    const cleanRows = (rawRows: Record<string, any>[]) => {
+    const cleanRows = (rawRows: Record<string, any>[], transportType: 'الشحن البحري' | 'الشحن الجوي') => {
       return removeTotalsRows(rawRows).map((r) => {
         const item: any = {};
         for (const [k, v] of Object.entries(r)) {
           item[k.trim()] = v;
         }
+
+        item['نوع النقل'] = transportType;
 
         // Numeric fields
         item['عدد الكارتون'] = cleanNumeric(item['عدد الكارتون']);
@@ -160,7 +163,7 @@ export async function fetchAtlasData(): Promise<{
       });
     };
 
-    const combinedDf = [...cleanRows(marineRaw), ...cleanRows(airRaw)];
+    const combinedDf = [...cleanRows(marineRaw, 'الشحن البحري'), ...cleanRows(airRaw, 'الشحن الجوي')];
 
     return {
       df: combinedDf,
