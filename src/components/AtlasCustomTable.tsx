@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { parseAndFormatDate } from '../utils/atlasOceanData';
 
 interface AtlasCustomTableProps {
   data: Record<string, any>[];
@@ -169,6 +170,8 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
 
                   let cellStyle: React.CSSProperties = {};
                   const isSpecialFinancialCol = ['المجموع', 'الزبون دفع', 'المكتب دفع', 'نقل داخلي'].includes(colStr);
+                  const isDateCol = colStr.includes('تاريخ') || colStr.toLowerCase().includes('date') || colStr.includes('توزيع') || colStr.includes('وصول') || colStr.includes('تحميل');
+                  const isDaysCol = !isDateCol && (colStr.includes('ايام') || colStr.includes('أيام') || colStr.toLowerCase().includes('days'));
 
                   if (isRowTotal) {
                     cellStyle = { backgroundColor: '#374151', color: '#ffffff', fontWeight: 'bold' };
@@ -183,6 +186,10 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
                       if (colIdx < 2) {
                         cellStyle = { backgroundColor: '#ffedd5', color: '#9a3412', fontWeight: 'bold' };
                       }
+                    } else if (isDateCol) {
+                      cellStyle = { backgroundColor: '#f8fafc', color: '#334155' };
+                    } else if (isDaysCol) {
+                      cellStyle = { backgroundColor: '#f8fafc', color: '#1e293b' };
                     } else {
                       if (numericVal !== null && numericVal > 0 && colStr !== 'التسلسل') {
                         // Lightest pastel pink (bg-pink-50)
@@ -190,11 +197,11 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
                       } else if (isNotArrived) {
                         // Lightest pastel yellow (bg-yellow-50)
                         cellStyle = { backgroundColor: '#fefce8', color: '#713f12' };
-                        if (['رقم الحاوية', sponsorKey].includes(colStr)) {
+                        if (['رقم الحاوية', 'تسلسل الحاوية', sponsorKey].includes(colStr)) {
                           cellStyle.fontWeight = 'bold';
                         }
                       } else {
-                        if (['رقم الحاوية', sponsorKey].includes(colStr) && valStr && valStr !== '-') {
+                        if (['رقم الحاوية', 'تسلسل الحاوية', sponsorKey].includes(colStr) && valStr && valStr !== '-') {
                           cellStyle = { backgroundColor: '#f0fdf4', color: '#166534', fontWeight: 'bold' };
                         }
                       }
@@ -204,8 +211,23 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
                   // Format value
                   let formattedVal: React.ReactNode = valStr;
 
-                  if (val === null || val === undefined || valStr === '' || valStr.toLowerCase() === 'nan') {
+                  if (val === null || val === undefined || valStr === '' || valStr.toLowerCase() === 'nan' || valStr.toLowerCase() === 'none') {
                     formattedVal = '-';
+                  } else if (isDateCol) {
+                    const parsed = parseAndFormatDate(val);
+                    formattedVal = parsed ? (
+                      <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block" dir="ltr">
+                        {parsed}
+                      </span>
+                    ) : '-';
+                  } else if (isDaysCol) {
+                    let dNum = numericVal !== null ? Math.round(numericVal) : 0;
+                    if (dNum >= 10000 || dNum < 0) dNum = 0;
+                    formattedVal = (
+                      <span className="font-mono text-xs font-bold text-slate-700">
+                        {dNum === 0 ? '0' : `${dNum} يوم`}
+                      </span>
+                    );
                   } else if (colStr === 'نوع النقل') {
                     formattedVal = valStr.includes('بحري') ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
@@ -218,7 +240,7 @@ export const AtlasCustomTable: React.FC<AtlasCustomTableProps> = ({
                     ) : (
                       valStr
                     );
-                  } else if (['رقم الحاوية', 'رقم الحاويات'].includes(colStr) && valStr && valStr !== '-' && !isRowTotal) {
+                  } else if (['رقم الحاوية', 'رقم الحاويات', 'تسلسل الحاوية'].includes(colStr) && valStr && valStr !== '-' && !isRowTotal) {
                     // Static text only (no link/button) as requested
                     formattedVal = (
                       <span className="font-mono font-bold text-slate-800 text-xs tracking-wide">

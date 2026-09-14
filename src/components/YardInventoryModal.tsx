@@ -19,9 +19,9 @@ export const YardInventoryModal: React.FC<YardInventoryModalProps> = ({
 }) => {
   const [selectedShipment, setSelectedShipment] = useState<string>(() => {
     if (initialShipment && initialShipment !== 'الكل') return initialShipment;
-    // Prefer RA6061 or RQ6038 if available
-    const preferred = availableShipments.find(s => s.includes('RA6061') || s.includes('RQ6038'));
-    return preferred || availableShipments.find(s => s !== 'الكل') || 'RA6061';
+    // Prefer actual physical container (e.g. BHCU512630) if available
+    const preferred = availableShipments.find(s => s.startsWith('BHCU') || s === 'BHCU512630');
+    return preferred || availableShipments.find(s => s !== 'الكل' && !s.startsWith('RQ')) || 'BHCU512630';
   });
 
   if (!isOpen) return null;
@@ -100,7 +100,7 @@ export const YardInventoryModal: React.FC<YardInventoryModalProps> = ({
               </div>
               <div className="text-center">
                 <h1 className="text-2xl font-black tracking-tight text-slate-900">
-                  شركة أطلس المحيط للتجارة العامة
+                  أطلس المحيط للتجارة العامة
                 </h1>
                 <h2 className="text-base font-bold text-slate-700 mt-1">
                   نموذج جرد الساحة والمستودع الرسمي
@@ -219,7 +219,7 @@ export const YardInventoryModal: React.FC<YardInventoryModalProps> = ({
                   <span className="flex-1 border-b border-slate-500 border-dotted h-5"></span>
                 </div>
                 <div className="flex items-center justify-between border border-slate-400 rounded-lg p-3 bg-slate-50 h-24">
-                  <span className="font-bold text-slate-600 text-xs">الختم الرسمي لشركة أطلس المحيط:</span>
+                  <span className="font-bold text-slate-600 text-xs">الختم الرسمي - أطلس المحيط للتجارة العامة:</span>
                   <div className="w-20 h-20 border border-dashed border-slate-400 rounded flex items-center justify-center text-[10px] text-slate-400">
                     (مكان الختم)
                   </div>
@@ -228,7 +228,7 @@ export const YardInventoryModal: React.FC<YardInventoryModalProps> = ({
             </div>
 
             <div className="text-center text-[11px] text-slate-400 border-t border-slate-200 pt-3">
-              تم إصدار هذا النموذج إلكترونياً عبر نظام إدارة وتتبع الشحنات لشركة أطلس المحيط للتجارة العامة والنقل الدولي
+              تم إصدار هذا النموذج إلكترونياً عبر نظام إدارة وتتبع الشحنات - أطلس المحيط للتجارة العامة
             </div>
           </div>
         </div>

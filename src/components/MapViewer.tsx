@@ -152,19 +152,14 @@ export const MapViewer: React.FC<MapViewerProps> = ({
       const lng = c.currentLocation.coordinates.lng;
       bounds.extend([lat, lng]);
 
-      // Determine shipment prefix (RQ for sea / RA for air)
-      const seqUpper = (c.sequenceNumber || '').toUpperCase().trim();
-      const idUpper = (c.id || '').toUpperCase().trim();
-      const titleUpper = (c.title || '').toUpperCase().trim();
-      const shipmentType = (seqUpper.startsWith('RA') || idUpper.startsWith('RA') || titleUpper.includes('RA'))
-        ? 'RA'
-        : 'RQ';
-      const containerDisplayLabel = `${shipmentType} - ${c.id}`;
+      // Separate physical container number and sequence identifier
+      const physicalContNo = c.id;
+      const sequenceNo = c.sequenceNumber || (c.title && c.title.match(/RQ\d+/i)?.[0]) || '';
 
       const vesselIcon = L.divIcon({
         className: 'custom-vessel-marker',
         html: `
-          <div class="relative group cursor-pointer">
+          <div class="relative group cursor-pointer" title="رقم الحاوية: ${physicalContNo}${sequenceNo ? ' | تسلسل: ' + sequenceNo : ''}">
             <div class="absolute -inset-2 bg-blue-600/25 rounded-full blur-sm ${isSelected ? 'animate-pulse' : ''}"></div>
             <div class="relative flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
               isSelected
@@ -177,7 +172,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
                 <path d="M12 10V4"/>
                 <path d="m8 8 4-4 4 4"/>
               </svg>
-              <span class="text-[11px] tracking-wide font-mono font-bold">${containerDisplayLabel}</span>
+              <span class="text-[11px] tracking-wide font-mono font-bold">${physicalContNo}</span>
               <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-emerald-400 animate-ping'}"></span>
             </div>
             ${
@@ -199,29 +194,52 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         })
         .addTo(layerGroup);
 
-      // Popup with detailed snapshot
+      // Popup with detailed snapshot matching data table layout
       marker.bindPopup(`
-        <div class="text-right p-2 text-slate-900 font-sans leading-relaxed" dir="rtl" style="min-width: 210px">
-          <div class="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-2">
-            <span class="font-mono font-bold text-xs text-blue-600">${containerDisplayLabel}</span>
-            <span class="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-semibold">${c.carrierCode}</span>
+        <div class="text-right p-2.5 text-slate-900 font-sans leading-relaxed" dir="rtl" style="min-width: 230px">
+          <div class="flex items-center justify-between border-b border-slate-200 pb-2 mb-2">
+            <div>
+              <span class="text-[10px] font-semibold text-slate-500 block">رقم الحاوية:</span>
+              <span class="font-mono font-bold text-sm text-blue-700 tracking-wide">${physicalContNo}</span>
+            </div>
+            <span class="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-md font-semibold font-mono">${c.carrierCode || c.carrier}</span>
           </div>
-          <div class="text-xs font-semibold text-slate-800">${c.vesselName}</div>
-          <div class="text-[11px] text-slate-500 mt-0.5">${c.currentLocation.name}</div>
+
+          ${
+            sequenceNo
+              ? `<div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 mb-2 shadow-2xs">
+                  <span class="text-[11px] font-semibold text-slate-600">تسلسل الحاوية:</span>
+                  <span class="font-mono font-bold text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">${sequenceNo}</span>
+                </div>`
+              : ''
+          }
+
+          <div class="mb-2">
+            <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <span>🚢</span>
+              <span>${c.vesselName}</span>
+            </div>
+            <div class="text-[11px] text-slate-600 mt-0.5">${c.currentLocation.name}</div>
+          </div>
           
           <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100 text-[11px]">
-            <div>
+            <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
               <span class="text-slate-500 block text-[10px]">السرعة:</span>
-              <span class="font-bold text-slate-800">${c.currentLocation.speedKnots} عقدة</span>
+              <span class="font-bold text-slate-800 font-mono">${c.currentLocation.speedKnots} عقدة</span>
             </div>
-            <div>
-              <span class="text-slate-500 block text-[10px]">الإنجاز:</span>
-              <span class="font-bold text-emerald-600">${c.progressPercent}%</span>
+            <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+              <span class="text-slate-500 block text-[10px]">نسبة الإنجاز:</span>
+              <span class="font-bold text-emerald-600 font-mono">${c.progressPercent}%</span>
             </div>
           </div>
+
+          <div class="mt-2 pt-1.5 border-t border-slate-100 text-[10px] text-slate-600 flex items-center justify-between">
+            <span>من: <strong>${c.originPort.city}</strong></span>
+            <span>إلى: <strong>${c.destinationPort.city}</strong></span>
+          </div>
           
-          <div class="mt-2 text-[10px] text-slate-400">
-            الإحداثيات: ${lat.toFixed(4)}°, ${lng.toFixed(4)}°
+          <div class="mt-1.5 text-[9px] text-slate-400 font-mono text-left" dir="ltr">
+            ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E
           </div>
         </div>
       `);

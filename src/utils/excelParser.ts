@@ -264,7 +264,7 @@ export function parseWorkbookContainers(workbook: XLSX.WorkBook, sourceLabel: st
 
       if (explicitContainerVal) {
         const cleanVal = explicitContainerVal.replace(/[\s\-_/.]/g, '').toUpperCase();
-        if (cleanVal.length >= 8 && cleanVal.length <= 13) {
+        if (!cleanVal.startsWith('RQ') && cleanVal.length >= 8 && cleanVal.length <= 13) {
           foundCodesMap.set(cleanVal, row);
           return; // Processed this row accurately!
         }
@@ -282,8 +282,8 @@ export function parseWorkbookContainers(workbook: XLSX.WorkBook, sourceLabel: st
         const valStr = String(val).trim();
         const cleanVal = valStr.replace(/[\s\-_/.]/g, '').toUpperCase();
 
-        // Check if value directly matches ISO container ID (3-4 letters + 6-7 digits)
-        if (/^[A-Z]{3,4}[UJZ]?\d{6,7}$/.test(cleanVal)) {
+        // Check if value directly matches ISO container ID (3-4 letters + 6-7 digits) and does not start with RQ
+        if (!cleanVal.startsWith('RQ') && /^[A-Z]{3,4}[UJZ]?\d{6,7}$/.test(cleanVal)) {
           if (!foundCodesMap.has(cleanVal)) {
             foundCodesMap.set(cleanVal, row);
           }

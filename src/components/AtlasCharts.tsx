@@ -44,8 +44,8 @@ export const PortPackagesChart: React.FC<{ data: PortSummaryItem[] }> = ({ data 
 
 interface CustomerTopItem {
   الكود: string;
-  '🚢 شحن بحري (RQ)': number;
-  '✈️ شحن جوي (RA)': number;
+  '🚢 شحن بحري': number;
+  '✈️ شحن جوي': number;
   total: number;
 }
 
@@ -76,8 +76,8 @@ export const TopCustomersChart: React.FC<{ data: CustomerTopItem[] }> = ({ data 
               formatter={(value: any, name: any) => [Number(value).toLocaleString(), name]}
             />
             <Legend wrapperStyle={{ paddingTop: '10px' }} />
-            <Bar dataKey="🚢 شحن بحري (RQ)" stackId="a" fill="#38bdf8" name="🚢 شحن بحري (RQ)" />
-            <Bar dataKey="✈️ شحن جوي (RA)" stackId="a" fill="#f43f5e" name="✈️ شحن جوي (RA)" />
+            <Bar dataKey="🚢 شحن بحري" stackId="a" fill="#38bdf8" name="🚢 شحن بحري" />
+            <Bar dataKey="✈️ شحن جوي" stackId="a" fill="#f43f5e" name="✈️ شحن جوي" />
           </BarChart>
         </ResponsiveContainer>
       </div>

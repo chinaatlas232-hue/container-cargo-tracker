@@ -43,6 +43,7 @@ interface AtlasOceanAppProps {
   containers: Container[];
   selectedContainer: Container | null;
   onSelectContainer: (container: Container | null) => void;
+  onContainersLoaded?: (containers: Container[]) => void;
 }
 
 type PageKey =
@@ -68,6 +69,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
   containers,
   selectedContainer,
   onSelectContainer,
+  onContainersLoaded,
 }) => {
   const [currentPage, setCurrentPage] = useState<PageKey>('dashboard');
   const [rawData, setRawData] = useState<AtlasRow[]>([]);
@@ -114,6 +116,9 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       if (res.error) setError(res.error);
       setRawData(res.df);
       setTrackingData(res.dfTracking);
+      if (res.containers && res.containers.length > 0 && onContainersLoaded) {
+        onContainersLoaded(res.containers);
+      }
       const nowStr = new Date().toLocaleTimeString('ar-IQ');
       setLastSyncTime(nowStr);
       setSyncToast(`✓ تم بنجاح مزامنة وتحديث (${res.df.length}) شحنة وحاوية مباشرة من Google Sheets!`);
@@ -143,15 +148,95 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
     return { all, marine, air };
   }, [rawData]);
 
-  // Filter options lists
-  const availableContainers = useMemo(() => {
-    const list = new Set<string>();
-    rawData.forEach((r) => {
-      const c = String(r['رقم الحاوية'] || '').trim();
-      if (c && !c.toLowerCase().includes('total')) list.add(c);
+  // Bidirectional alias map between container sequence (e.g. RQ6038) and physical container number (e.g. BHCU512630)
+  const containerAliasMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const addPair = (a: string, b: string) => {
+      if (!a || !b) return;
+      if (!map.has(a)) map.set(a, new Set());
+      if (!map.has(b)) map.set(b, new Set());
+      map.get(a)!.add(b);
+      map.get(a)!.add(a);
+      map.get(b)!.add(a);
+      map.get(b)!.add(b);
+    };
+
+    trackingData.forEach((t) => {
+      const seq = String(t['تسلسل الحاوية'] || '').trim().toUpperCase();
+      const cont = String(t['رقم الحاوية'] || '').trim().toUpperCase();
+      if (seq && cont) {
+        addPair(seq, cont);
+      }
     });
-    return ['الكل', ...Array.from(list).sort()];
-  }, [rawData]);
+
+    rawData.forEach((r) => {
+      const seq = String(r['تسلسل الحاوية'] || '').trim().toUpperCase();
+      const cont = String(r['رقم الحاوية'] || '').trim().toUpperCase();
+      if (seq && cont) {
+        addPair(seq, cont);
+      }
+    });
+
+    return map;
+  }, [trackingData, rawData]);
+
+  // Distinct separated lists of physical containers and RQ sequences
+  const { physicalContainers, rqSequences } = useMemo(() => {
+    const phys = new Set<string>();
+    const rq = new Set<string>();
+
+    // 1. From tracking data
+    trackingData.forEach((t) => {
+      const cont = String(t['رقم الحاوية'] || '').trim().toUpperCase();
+      if (cont && !cont.includes('TOTAL') && !cont.startsWith('RA')) {
+        if (cont.startsWith('RQ')) {
+          rq.add(cont);
+        } else {
+          phys.add(cont);
+        }
+      }
+      const seq = String(t['تسلسل الحاوية'] || '').trim().toUpperCase();
+      if (seq && !seq.includes('TOTAL') && !seq.startsWith('RA')) {
+        if (seq.startsWith('RQ')) {
+          rq.add(seq);
+        }
+      }
+    });
+
+    // 2. From raw shipment data (sea freight only)
+    rawData.forEach((r) => {
+      const transport = String(r['نوع النقل'] || '');
+      if (!transport.includes('جوي')) {
+        const cont = String(r['رقم الحاوية'] || '').trim().toUpperCase();
+        if (cont && !cont.includes('TOTAL') && !cont.startsWith('RA')) {
+          if (cont.startsWith('RQ')) {
+            rq.add(cont);
+          } else {
+            phys.add(cont);
+          }
+        }
+        const seq = String(r['تسلسل الحاوية'] || '').trim().toUpperCase();
+        if (seq && !seq.includes('TOTAL') && !seq.startsWith('RA')) {
+          if (seq.startsWith('RQ')) {
+            rq.add(seq);
+          }
+        }
+      }
+    });
+
+    const sortedPhys = Array.from(phys).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const sortedRq = Array.from(rq).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+    return {
+      physicalContainers: sortedPhys,
+      rqSequences: sortedRq,
+    };
+  }, [rawData, trackingData]);
+
+  // Combined list for general usage
+  const availableContainers = useMemo(() => {
+    return ['الكل', ...physicalContainers, ...rqSequences];
+  }, [physicalContainers, rqSequences]);
 
   const availableCodes = useMemo(() => {
     const list = new Set<string>();
@@ -159,7 +244,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       const c = String(r['code'] || r['الكود'] || '').trim();
       if (c && !c.toLowerCase().includes('total')) list.add(c);
     });
-    return ['الكل', ...Array.from(list).sort()];
+    return ['الكل', ...Array.from(list).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))];
   }, [rawData]);
 
   const availableSponsors = useMemo(() => {
@@ -171,29 +256,132 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
     return ['الكل', ...Array.from(list).sort()];
   }, [rawData]);
 
-  // Apply Transport and Sidebar Filters
+  // Unified Filter logic across ALL screens and reports
   const filteredDf = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const targetCont = selectedContainerFilter !== 'الكل' ? selectedContainerFilter.trim().toUpperCase() : null;
+    const targetCode = selectedCodeFilter !== 'الكل' ? selectedCodeFilter.trim().toUpperCase() : null;
+    const targetSponsor = selectedSponsorFilter !== 'الكل' ? selectedSponsorFilter.trim() : null;
+
     return rawData.filter((row) => {
-      const cont = String(row['رقم الحاوية'] || '').trim();
-      const code = String(row['code'] || row['الكود'] || '').trim();
+      const cont = String(row['رقم الحاوية'] || '').trim().toUpperCase();
+      const seq = String(row['تسلسل الحاوية'] || '').trim().toUpperCase();
+      const code = String(row['code'] || row['الكود'] || '').trim().toUpperCase();
       const sponsor = String(row['الكفيل'] || '').trim();
       const transport = String(row['نوع النقل'] || '').trim();
+      const mark = String(row['Shipping mark'] || '').trim().toLowerCase();
+      const desc = String(row['نوع البظاعة'] || row['Eng.Dec.'] || '').trim().toLowerCase();
+      const staff = String(row['Staff'] || '').trim().toLowerCase();
+      const notes = String(row['الملاحظات'] || '').trim().toLowerCase();
 
+      // 1. Top Transport View Buttons (الكل، الشحن البحري، الشحن الجوي)
       if (transportFilter !== 'الكل' && transport !== transportFilter) {
         return false;
       }
-      if (selectedContainerFilter !== 'الكل' && cont !== selectedContainerFilter) {
-        return false;
+
+      // 2. Physical Container vs RQ Sequence Filter: Strictly segregated by type
+      if (targetCont) {
+        const isRQ = targetCont.startsWith('RQ');
+        if (isRQ) {
+          // When an RQ sequence is chosen (e.g. RQ6038): search strictly in sequence column
+          const matchesSeq = seq === targetCont || (cont === targetCont && cont.startsWith('RQ'));
+          if (!matchesSeq) return false;
+        } else {
+          // When a physical container number is chosen (e.g. BHCU512630): search strictly in physical container column
+          const matchesCont = cont === targetCont;
+          if (!matchesCont) return false;
+        }
       }
-      if (selectedCodeFilter !== 'الكل' && code !== selectedCodeFilter) {
-        return false;
+
+      // 3. Customer Code Filter (كود العميل)
+      if (targetCode) {
+        const matchesCode = code === targetCode || mark.toUpperCase().includes(targetCode);
+        if (!matchesCode) return false;
       }
-      if (selectedSponsorFilter !== 'الكل' && sponsor !== selectedSponsorFilter) {
-        return false;
+
+      // 4. Sponsor Filter (اسم الكفيل)
+      if (targetSponsor) {
+        if (sponsor !== targetSponsor) return false;
       }
+
+      // 5. Universal Smart Search Query (البحث الذكي الموحد)
+      if (q) {
+        const matches =
+          code.toLowerCase().includes(q) ||
+          cont.toLowerCase().includes(q) ||
+          sponsor.toLowerCase().includes(q) ||
+          mark.includes(q) ||
+          desc.includes(q) ||
+          staff.includes(q) ||
+          notes.includes(q);
+        if (!matches) return false;
+      }
+
       return true;
     });
-  }, [rawData, transportFilter, selectedContainerFilter, selectedCodeFilter, selectedSponsorFilter]);
+  }, [
+    rawData,
+    transportFilter,
+    selectedContainerFilter,
+    selectedCodeFilter,
+    selectedSponsorFilter,
+    searchQuery,
+    containerAliasMap,
+  ]);
+
+  // Filtered tracking data for Tracking tab
+  const filteredTracking = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const targetCont = selectedContainerFilter !== 'الكل' ? selectedContainerFilter.trim().toUpperCase() : null;
+    const targetAliases = targetCont ? containerAliasMap.get(targetCont) : null;
+
+    return trackingData.filter((r) => {
+      const cont = String(r['رقم الحاوية'] || '').trim().toUpperCase();
+      const seq = String(r['تسلسل الحاوية'] || '').trim().toUpperCase();
+      const port = String(r['الميناء'] || '').trim().toLowerCase();
+      const line = String(r['line name'] || '').trim().toLowerCase();
+      const color = String(r['اللون'] || '').trim().toLowerCase();
+
+      if (targetCont) {
+        const isRQ = targetCont.startsWith('RQ');
+        if (isRQ) {
+          const matches = seq === targetCont || (cont === targetCont && cont.startsWith('RQ'));
+          if (!matches) return false;
+        } else {
+          const matches = cont === targetCont;
+          if (!matches) return false;
+        }
+      }
+
+      if (q) {
+        const matches =
+          cont.toLowerCase().includes(q) ||
+          seq.toLowerCase().includes(q) ||
+          port.includes(q) ||
+          line.includes(q) ||
+          color.includes(q);
+        if (!matches) return false;
+      }
+
+      return true;
+    });
+  }, [trackingData, selectedContainerFilter, searchQuery, containerAliasMap]);
+
+  // Check whether any filter is actively applied
+  const hasActiveFilters =
+    transportFilter !== 'الكل' ||
+    selectedContainerFilter !== 'الكل' ||
+    selectedCodeFilter !== 'الكل' ||
+    selectedSponsorFilter !== 'الكل' ||
+    searchQuery.trim().length > 0;
+
+  const handleClearAllFilters = () => {
+    setTransportFilter('الكل');
+    setSelectedContainerFilter('الكل');
+    setSelectedCodeFilter('الكل');
+    setSelectedSponsorFilter('الكل');
+    setSearchQuery('');
+  };
 
   // Handle opening container modal
   const handleContainerClick = (containerNo: string) => {
@@ -257,18 +445,8 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
   /* 1. DASHBOARD TAB                                                          */
   /* ========================================================================= */
   const renderDashboard = () => {
-    // Search filter
-    let dashDf = filteredDf;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      dashDf = dashDf.filter((r) => {
-        const c = String(r['code'] || '').toLowerCase();
-        const k = String(r['الكفيل'] || '').toLowerCase();
-        const cont = String(r['رقم الحاوية'] || '').toLowerCase();
-        const sm = String(r['Shipping mark'] || '').toLowerCase();
-        return c.includes(q) || k.includes(q) || cont.includes(q) || sm.includes(q);
-      });
-    }
+    // Dash uses the unified filtered dataset directly
+    const dashDf = filteredDf;
 
     // Metrics
     const totalOrders = dashDf.length;
@@ -279,9 +457,61 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
     const uniqueClients = new Set(
       dashDf.map((r) => String(r['code'] || r['Shipping mark'] || '')).filter(Boolean)
     ).size;
-    const uniqueContainers = new Set(
-      dashDf.map((r) => String(r['رقم الحاوية'] || '')).filter(Boolean)
-    ).size;
+
+    // Sea Freight Container Counter Logic:
+    // Strictly matches the 39 actual physical sea containers,
+    // treats container numbers as an independent logic/column,
+    // and strictly excludes any record or identifier starting with 'RQ' prefix or Air freight.
+    let uniqueContainers = 0;
+    if (transportFilter === 'الشحن الجوي') {
+      // Air freight has no maritime containers
+      uniqueContainers = 0;
+    } else if (selectedContainerFilter !== 'الكل') {
+      const isRQ = selectedContainerFilter.trim().toUpperCase().startsWith('RQ');
+      if (isRQ) {
+        // When an RQ sequence is chosen, calculate distinct physical maritime containers associated with this sequence in dashDf
+        const matchingConts = new Set<string>();
+        dashDf.forEach((r) => {
+          const c = String(r['رقم الحاوية'] || '').trim().toUpperCase();
+          if (c && !c.startsWith('RQ') && !c.startsWith('RA') && !c.includes('TOTAL')) {
+            matchingConts.add(c);
+          }
+        });
+        uniqueContainers = matchingConts.size;
+      } else {
+        uniqueContainers = 1;
+      }
+    } else {
+      const hasSpecificFilter =
+        selectedCodeFilter !== 'الكل' ||
+        selectedSponsorFilter !== 'الكل' ||
+        searchQuery.trim().length > 0;
+
+      if (hasSpecificFilter) {
+        // Count matching physical containers in filtered dataset, strictly excluding 'RQ' and 'RA' prefixes
+        const matchingConts = new Set<string>();
+        dashDf.forEach((r) => {
+          const transport = String(r['نوع النقل'] || '');
+          if (!transport.includes('جوي')) {
+            const c = String(r['رقم الحاوية'] || '').trim().toUpperCase();
+            if (c && !c.startsWith('RQ') && !c.startsWith('RA') && !c.includes('TOTAL')) {
+              matchingConts.add(c);
+            }
+          }
+        });
+        uniqueContainers = matchingConts.size;
+      } else {
+        // Unfiltered Sea Freight or All: exactly the 39 actual physical containers tracked
+        const trackingConts = new Set<string>();
+        trackingData.forEach((t) => {
+          const c = String(t['رقم الحاوية'] || '').trim().toUpperCase();
+          if (c && !c.startsWith('RQ') && !c.startsWith('RA') && !c.includes('TOTAL')) {
+            trackingConts.add(c);
+          }
+        });
+        uniqueContainers = trackingConts.size > 0 ? trackingConts.size : (containers?.length || 39);
+      }
+    }
 
     const totalOfficePaid = dashDf.reduce((acc, r) => acc + (r['المكتب دفع'] || 0), 0);
     const totalClientPaid = dashDf.reduce((acc, r) => acc + (r['الزبون دفع'] || 0), 0);
@@ -291,10 +521,11 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       'نوع النقل',
       'code',
       'Shipping mark',
+      'تسلسل الحاوية',
+      'رقم الحاوية',
       'عدد الكارتون',
       'الوزن',
       'حجم',
-      'رقم الحاوية',
       'الكفيل',
       'المجموع',
       'الزبون دفع',
@@ -320,80 +551,18 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
     return (
       <div>
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-2">
-          <h1 className="atlas-h1 mb-0">📊 لوحة التحكم الرئيسية</h1>
-
-          {/* Top 3 Transport Options Filter (الخيارات الثلاثة في أعلى الشاشة) */}
-          <div className="no-print flex items-center gap-1.5 bg-slate-900 p-1.5 rounded-xl border border-slate-700 shadow-sm self-start md:self-auto">
-            <button
-              type="button"
-              onClick={() => setTransportFilter('الكل')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                transportFilter === 'الكل'
-                  ? 'bg-blue-600 text-white shadow-md ring-1 ring-blue-400'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Globe className="w-3.5 h-3.5" />
-              <span>الكل</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                transportFilter === 'الكل' ? 'bg-blue-700 text-blue-100' : 'bg-slate-800 text-slate-400'
-              }`}>
-                {transportCounts.all}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setTransportFilter('الشحن البحري')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                transportFilter === 'الشحن البحري'
-                  ? 'bg-teal-600 text-white shadow-md ring-1 ring-teal-400'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Ship className="w-3.5 h-3.5 text-teal-300" />
-              <span>الشحن البحري</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                transportFilter === 'الشحن البحري' ? 'bg-teal-700 text-teal-100' : 'bg-slate-800 text-slate-400'
-              }`}>
-                {transportCounts.marine}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setTransportFilter('الشحن الجوي')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                transportFilter === 'الشحن الجوي'
-                  ? 'bg-purple-600 text-white shadow-md ring-1 ring-purple-400'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Plane className="w-3.5 h-3.5 text-purple-300" />
-              <span>الشحن الجوي</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                transportFilter === 'الشحن الجوي' ? 'bg-purple-700 text-purple-100' : 'bg-slate-800 text-slate-400'
-              }`}>
-                {transportCounts.air}
-              </span>
-            </button>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+          <div>
+            <h1 className="atlas-h1 mb-1">📊 لوحة التحكم الشاملة</h1>
+            <p className="text-xs text-slate-400">
+              ملخص حركة الشحنات والحاويات البحرية والجوية مع الإحصائيات الفورية
+            </p>
           </div>
-        </div>
-
-        <hr className="border-slate-700 my-4" />
-
-        {/* Smart Search */}
-        <div className="no-print mb-4">
-          <div className="relative">
-            <Search className="absolute right-3.5 top-3.5 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="🔍 بحث ذكي (ابحث برقم الكود، اسم الكفيل، أو رقم الحاوية)..."
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg pr-10 pl-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-sm"
-            />
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-300 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg shadow-xs">
+              إجمالي السجلات المفروزة:{' '}
+              <strong className="text-emerald-400 font-mono">{dashDf.length.toLocaleString()}</strong>
+            </span>
           </div>
         </div>
 
@@ -401,7 +570,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
         {/* Row 1 (3 columns) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 shadow-xs text-center">
-            <div className="text-xs font-semibold text-slate-600 mb-1">🚢 عدد الحاويات</div>
+            <div className="text-xs font-semibold text-slate-600 mb-1">🚢 عدد الحاويات الفعلية</div>
             <div className="text-2xl font-bold font-mono text-slate-900">{uniqueContainers.toLocaleString()}</div>
           </div>
           <div className="p-4 rounded-xl border border-teal-200 bg-teal-50 text-teal-950 shadow-xs text-center">
@@ -411,7 +580,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
           <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-950 shadow-xs text-center">
             <div className="text-xs font-semibold text-amber-700 mb-1">💰 المبلغ الكلي</div>
             <div className="text-2xl font-bold font-mono text-amber-900">
-              ${totalAmountAll.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {totalAmountAll.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
         </div>
@@ -431,13 +600,13 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
           <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-950 shadow-xs text-center">
             <div className="text-xs font-semibold text-emerald-700 mb-1">💰 مبالغ دفعت من المكتب</div>
             <div className="text-xl font-bold font-mono text-emerald-900">
-              ${totalOfficePaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {totalOfficePaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
           <div className="p-3.5 rounded-xl border border-purple-200 bg-purple-50 text-purple-950 shadow-xs text-center">
             <div className="text-xs font-semibold text-purple-700 mb-1">👤 مبالغ دفعت من الزبون</div>
             <div className="text-xl font-bold font-mono text-purple-900">
-              ${totalClientPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {totalClientPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
         </div>
@@ -484,16 +653,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
   /* 2. CUSTOMS TAB                                                            */
   /* ========================================================================= */
   const renderCustoms = () => {
-    let customsDf = filteredDf;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      customsDf = customsDf.filter((r) => {
-        const c = String(r['code'] || '').toLowerCase();
-        const k = String(r['الكفيل'] || '').toLowerCase();
-        const cont = String(r['رقم الحاوية'] || '').toLowerCase();
-        return c.includes(q) || k.includes(q) || cont.includes(q);
-      });
-    }
+    const customsDf = filteredDf;
 
     const totalCustoms = customsDf.reduce((acc, r) => acc + (r['مبلغ الجمرك'] || 0), 0);
     const totalCollected = customsDf.reduce((acc, r) => acc + (r['قيمة الاستحصالات'] || 0), 0);
@@ -766,8 +926,11 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
   /* 4. AGING REPORT TAB                                                       */
   /* ========================================================================= */
   const renderAging = () => {
-    // Filter rows with positive days and remaining amount
-    const agingRows = filteredDf.filter((r) => (r['عدد الايام'] || 0) > 0 && (r['متبقي حقيقي'] || 0) > 0);
+    // Filter rows with valid positive days (preventing corrupted Excel serial dates) and remaining amount
+    const agingRows = filteredDf.filter((r) => {
+      const d = Number(r['عدد الايام']) || 0;
+      return d > 0 && d < 10000 && (r['متبقي حقيقي'] || 0) > 0;
+    });
 
     // Pivot table: Container + Code -> Days -> Remaining
     const daysSet = new Set<number>();
@@ -1030,12 +1193,19 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
         </div>
 
         <hr className="border-slate-700 my-4" />
-        <h3 className="text-lg font-bold text-slate-200 mb-2">
-          📋 بيانات ومتابعة الشحنات المرفوعة على جوجل شيت (الـ 39 حاوية)
-        </h3>
-        {renderDownloadButtons(trackingData, 'تتبع_الحاويات_أطلس_المحيط')}
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <h3 className="text-lg font-bold text-slate-200">
+            📋 بيانات ومتابعة الشحنات المرفوعة على جوجل شيت ({filteredTracking.length} سجل)
+          </h3>
+          {filteredTracking.length !== trackingData.length && (
+            <span className="text-xs text-amber-300 font-mono bg-amber-950/60 border border-amber-800 px-2 py-0.5 rounded">
+              تمت التصفية من أصل {trackingData.length}
+            </span>
+          )}
+        </div>
+        {renderDownloadButtons(filteredTracking, 'تتبع_الحاويات_أطلس_المحيط')}
         <AtlasCustomTable
-          data={trackingData}
+          data={filteredTracking}
           onContainerClick={handleContainerClick}
         />
       </div>
@@ -1058,7 +1228,9 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       }
       const p = portMap.get(port)!;
       p.packages += pkgs;
-      if (cont) p.containers.add(cont);
+      if (cont && !cont.toUpperCase().startsWith('RQ') && !cont.toLowerCase().includes('total')) {
+        p.containers.add(cont);
+      }
     });
 
     const portSummaryRows = Array.from(portMap.entries()).map(([port, data]) => ({
@@ -1067,18 +1239,18 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       'Count of الحاويات': data.containers.size,
     }));
 
-    // Top 20 Customers air vs marine (removed 'أخرى / عام' column as requested)
+    // Top 20 Customers air vs marine (clean transport labels)
     const custMap = new Map<string, { marine: number; air: number; total: number }>();
     filteredDf.forEach((r) => {
       const code = String(r['code'] || r['الكود'] || 'غير محدد').trim();
-      const cont = String(r['رقم الحاوية'] || '').toUpperCase();
+      const transport = String(r['نوع النقل'] || '');
       const cartons = r['عدد الكارتون'] || 0;
 
       if (!custMap.has(code)) {
         custMap.set(code, { marine: 0, air: 0, total: 0 });
       }
       const c = custMap.get(code)!;
-      if (cont.startsWith('RA')) c.air += cartons;
+      if (transport.includes('جوي')) c.air += cartons;
       else c.marine += cartons;
       c.total += cartons;
     });
@@ -1086,8 +1258,8 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
     const topCustomersList = Array.from(custMap.entries())
       .map(([code, data]) => ({
         الكود: code,
-        '🚢 شحن بحري (RQ)': data.marine,
-        '✈️ شحن جوي (RA)': data.air,
+        '🚢 شحن بحري': data.marine,
+        '✈️ شحن جوي': data.air,
         total: data.total,
       }))
       .sort((a, b) => b.total - a.total)
@@ -1125,7 +1297,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       <div className="no-print md:hidden bg-[#07151a] p-3 flex items-center justify-between border-b border-slate-800 sticky top-0 z-30">
         <div className="flex items-center gap-2 font-bold text-white text-base">
           <Ship className="w-5 h-5 text-blue-400" />
-          <span>شركة أطلس المحيط</span>
+          <span>أطلس المحيط للتجارة العامة</span>
         </div>
         <button
           type="button"
@@ -1144,43 +1316,99 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
       >
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-lg font-black text-white flex items-center gap-2">
-              <span>🚢 شركة أطلس المحيط</span>
+            <h2 className="text-sm font-bold text-white flex items-center gap-2">
+              <Ship className="w-4 h-4 text-blue-400" />
+              <span>أطلس المحيط للتجارة العامة</span>
             </h2>
           </div>
           <hr className="border-slate-800 mb-3" />
 
           {/* Filters */}
           <div className="mb-4 space-y-3 text-right">
-            <h3 className="text-xs font-bold text-slate-300">🔍 الفلاتر الجانبية</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-300">🔍 الفلاتر الجانبية</h3>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={handleClearAllFilters}
+                  className="text-[10px] text-red-400 hover:text-red-300 font-bold underline cursor-pointer"
+                >
+                  إعادة ضبط الكل
+                </button>
+              )}
+            </div>
 
             {/* Container Select */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                🚢 رقم الحاوية / الشحنة:
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-slate-400">
+                  🚢 رقم الحاوية / تسلسل (RQ):
+                </label>
+                {selectedContainerFilter !== 'الكل' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedContainerFilter('الكل')}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 font-bold cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                )}
+              </div>
               <select
                 value={selectedContainerFilter}
                 onChange={(e) => setSelectedContainerFilter(e.target.value)}
-                className="w-full bg-white text-slate-900 font-bold text-xs p-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`w-full font-bold text-xs p-1.5 rounded border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors ${
+                  selectedContainerFilter !== 'الكل'
+                    ? 'bg-blue-50 text-blue-900 border-blue-400 ring-1 ring-blue-400'
+                    : 'bg-white text-slate-900 border-slate-300'
+                }`}
               >
-                {availableContainers.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
+                <option value="الكل">الكل (جميع الحاويات والتسلسلات)</option>
+                {physicalContainers.length > 0 && (
+                  <optgroup label="🚢 أرقام الحاويات الفعلية (Physical Containers)">
+                    {physicalContainers.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {rqSequences.length > 0 && (
+                  <optgroup label="🔖 تسلسلات الحاويات (RQ Sequences)">
+                    {rqSequences.map((seq) => (
+                      <option key={seq} value={seq}>
+                        {seq}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
 
             {/* Code Select */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                🏷️ كود العميل (Code):
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-slate-400">
+                  🏷️ كود العميل (Code):
+                </label>
+                {selectedCodeFilter !== 'الكل' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCodeFilter('الكل')}
+                    className="text-[10px] text-teal-400 hover:text-teal-300 font-bold cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                )}
+              </div>
               <select
                 value={selectedCodeFilter}
                 onChange={(e) => setSelectedCodeFilter(e.target.value)}
-                className="w-full bg-white text-slate-900 font-bold text-xs p-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`w-full font-bold text-xs p-1.5 rounded border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors ${
+                  selectedCodeFilter !== 'الكل'
+                    ? 'bg-teal-50 text-teal-900 border-teal-400 ring-1 ring-teal-400'
+                    : 'bg-white text-slate-900 border-slate-300'
+                }`}
               >
                 {availableCodes.map((c) => (
                   <option key={c} value={c}>
@@ -1192,13 +1420,28 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
             {/* Sponsor Select */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                👤 اسم الكفيل:
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-slate-400">
+                  👤 اسم الكفيل:
+                </label>
+                {selectedSponsorFilter !== 'الكل' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSponsorFilter('الكل')}
+                    className="text-[10px] text-amber-400 hover:text-amber-300 font-bold cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                )}
+              </div>
               <select
                 value={selectedSponsorFilter}
                 onChange={(e) => setSelectedSponsorFilter(e.target.value)}
-                className="w-full bg-white text-slate-900 font-bold text-xs p-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`w-full font-bold text-xs p-1.5 rounded border focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors ${
+                  selectedSponsorFilter !== 'الكل'
+                    ? 'bg-amber-50 text-amber-900 border-amber-400 ring-1 ring-amber-400'
+                    : 'bg-white text-slate-900 border-slate-300'
+                }`}
               >
                 {availableSponsors.map((s) => (
                   <option key={s} value={s}>
@@ -1263,7 +1506,7 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
           </button>
 
           <div className="p-2 rounded bg-slate-900/80 border border-slate-800 text-[10px] text-emerald-400 font-semibold text-center leading-relaxed">
-            متصل بقاعدة بيانات أطلس و Google Sheets بنجاح ✔️
+            متصل بقاعدة بيانات أطلس المحيط للتجارة العامة و Google Sheets بنجاح ✔️
           </div>
         </div>
       </aside>
@@ -1373,6 +1616,189 @@ export const AtlasOceanApp: React.FC<AtlasOceanAppProps> = ({
 
         {!isLoading && (
           <>
+            {/* Unified Universal Top Controls: Transport Buttons & Smart Search */}
+            <div className="no-print mb-4 bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 shadow-md">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                {/* 1. Top Transport View Buttons (أزرار العرض العلوية) */}
+                <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800 shadow-inner shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setTransportFilter('الكل')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                      transportFilter === 'الكل'
+                        ? 'bg-blue-600 text-white shadow-md ring-1 ring-blue-400'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>الكل</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                        transportFilter === 'الكل' ? 'bg-blue-700 text-blue-100' : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {transportCounts.all}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTransportFilter('الشحن البحري')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                      transportFilter === 'الشحن البحري'
+                        ? 'bg-teal-600 text-white shadow-md ring-1 ring-teal-400'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <Ship className="w-3.5 h-3.5 text-teal-300" />
+                    <span>الشحن البحري</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                        transportFilter === 'الشحن البحري' ? 'bg-teal-700 text-teal-100' : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {transportCounts.marine}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTransportFilter('الشحن الجوي')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                      transportFilter === 'الشحن الجوي'
+                        ? 'bg-purple-600 text-white shadow-md ring-1 ring-purple-400'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <Plane className="w-3.5 h-3.5 text-purple-300" />
+                    <span>الشحن الجوي</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                        transportFilter === 'الشحن الجوي' ? 'bg-purple-700 text-purple-100' : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {transportCounts.air}
+                    </span>
+                  </button>
+                </div>
+
+                {/* 2. Universal Smart Search (البحث الذكي الموحد) */}
+                <div className="flex-1 relative">
+                  <Search className="absolute right-3.5 top-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="🔍 بحث ذكي شامل (رقم الحاوية، كود العميل، اسم الكفيل، مارك، أو تفاصيل البضاعة)..."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pr-10 pl-9 py-2 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-xs sm:text-sm font-medium transition-colors"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute left-3 top-2.5 text-slate-400 hover:text-white text-xs cursor-pointer px-1 py-0.5"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Active Filters Strip (شريط الفلاتر النشطة) */}
+              {hasActiveFilters && (
+                <div className="mt-3 pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-slate-400 font-semibold text-[11px] flex items-center gap-1">
+                      <Filter className="w-3 h-3 text-blue-400" />
+                      الفلاتر النشطة:
+                    </span>
+
+                    {transportFilter !== 'الكل' && (
+                      <span className="inline-flex items-center gap-1.5 bg-blue-900/60 border border-blue-500/60 text-blue-200 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                        <span>نوع النقل: {transportFilter}</span>
+                        <button
+                          type="button"
+                          onClick={() => setTransportFilter('الكل')}
+                          className="hover:text-white cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    )}
+
+                    {selectedContainerFilter !== 'الكل' && (
+                      <span className="inline-flex items-center gap-1.5 bg-indigo-900/60 border border-indigo-500/60 text-indigo-200 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                        <span>
+                          {selectedContainerFilter.startsWith('RQ') ? 'التسلسل: ' : 'الحاوية: '}
+                          {selectedContainerFilter}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedContainerFilter('الكل')}
+                          className="hover:text-white cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    )}
+
+                    {selectedCodeFilter !== 'الكل' && (
+                      <span className="inline-flex items-center gap-1.5 bg-teal-900/60 border border-teal-500/60 text-teal-200 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                        <span>الكود: {selectedCodeFilter}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCodeFilter('الكل')}
+                          className="hover:text-white cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    )}
+
+                    {selectedSponsorFilter !== 'الكل' && (
+                      <span className="inline-flex items-center gap-1.5 bg-amber-900/60 border border-amber-500/60 text-amber-200 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                        <span>الكفيل: {selectedSponsorFilter}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSponsorFilter('الكل')}
+                          className="hover:text-white cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    )}
+
+                    {searchQuery.trim() && (
+                      <span className="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-600 text-slate-200 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                        <span>بحث: "{searchQuery}"</span>
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery('')}
+                          className="hover:text-white cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleClearAllFilters}
+                      className="text-[11px] font-bold text-red-400 hover:text-red-300 hover:underline cursor-pointer mr-2"
+                    >
+                      إلغاء تصفية الكل ↺
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-slate-300 font-mono">
+                    المعروض:{' '}
+                    <strong className="text-emerald-400">{filteredDf.length.toLocaleString()}</strong> من أصل{' '}
+                    <span className="text-slate-400">{rawData.length.toLocaleString()}</span> شحنة
+                  </div>
+                </div>
+              )}
+            </div>
+
             {currentPage === 'dashboard' && renderDashboard()}
             {currentPage === 'customs' && renderCustoms()}
             {currentPage === 'sponsors' && renderSponsors()}

@@ -245,7 +245,7 @@ export default function App() {
       <div className="no-print bg-[#07151a] border-b border-slate-800 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2 font-bold">
           <Ship className="w-4 h-4 text-blue-400" />
-          <span className="text-sm">شركة أطلس المحيط للشحن والتخليص الجمركي</span>
+          <span className="text-sm font-black tracking-wide">أطلس المحيط للتجارة العامة</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -259,7 +259,7 @@ export default function App() {
             }`}
           >
             <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>🏢 واجهة أطلس المحيط (الكود الأم)</span>
+            <span>لوحة التحكم والكشوفات (الكود الأم)</span>
           </button>
 
           <button
@@ -292,6 +292,12 @@ export default function App() {
           containers={containers}
           selectedContainer={selectedContainer}
           onSelectContainer={setSelectedContainer}
+          onContainersLoaded={(loaded) => {
+            if (loaded && loaded.length > 0) {
+              setContainers(loaded);
+              if (!selectedContainer) setSelectedContainer(loaded[0]);
+            }
+          }}
         />
       ) : (
         <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans">
@@ -510,7 +516,7 @@ export default function App() {
 
           <footer className="mt-auto border-t border-slate-200 bg-white py-6 px-4 text-center text-xs text-slate-500">
             <p>
-              شركة أطلس المحيط - نظام تتبع ومراقبة الحاويات والشحنات البحرية والجوية مع الاستعلام الحي عن الجمارك
+              أطلس المحيط للتجارة العامة - نظام تتبع ومراقبة الحاويات والشحنات البحرية والجوية مع الاستعلام الحي عن الجمارك
               والديون
             </p>
           </footer>

@@ -75,7 +75,7 @@ export const PagePrintModal: React.FC<PagePrintModalProps> = ({
           <html lang="ar" dir="rtl">
             <head>
               <meta charset="UTF-8" />
-              <title>${title} - شركة أطلس المحيط</title>
+              <title>${title} - أطلس المحيط للتجارة العامة</title>
               <style>
                 @page { size: A4 landscape; margin: 8mm; }
                 body { font-family: 'Cairo', sans-serif, Tahoma, Arial; direction: rtl; margin: 0; padding: 12px; color: #000; background: #fff; }
@@ -121,7 +121,7 @@ export const PagePrintModal: React.FC<PagePrintModalProps> = ({
       <html lang="ar" dir="rtl">
         <head>
           <meta charset="UTF-8" />
-          <title>${title} - شركة أطلس المحيط</title>
+          <title>${title} - أطلس المحيط للتجارة العامة</title>
           <style>
             @page { size: A4 landscape; margin: 8mm; }
             body { font-family: 'Cairo', sans-serif, Tahoma, Arial; direction: rtl; margin: 20px; color: #0f172a; background: #fff; }
@@ -151,7 +151,7 @@ export const PagePrintModal: React.FC<PagePrintModalProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${filename || 'تقرير_أطلس_المحيط'}_جاهز_للطباعة.html`;
+    link.download = `${filename || 'تقرير_أطلس_المحيط_للتجارة_العامة'}_جاهز_للطباعة.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -250,7 +250,7 @@ export const PagePrintModal: React.FC<PagePrintModalProps> = ({
                 </div>
                 <div className="text-center">
                   <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
-                    شركة أطلس المحيط للشحن الدولي
+                    أطلس المحيط للتجارة العامة
                   </h1>
                   <h2 className="text-sm md:text-base font-bold text-blue-800 mt-1">
                     {title}
@@ -348,7 +348,7 @@ export const PagePrintModal: React.FC<PagePrintModalProps> = ({
                 <span className="block mt-4 border-b border-dashed border-slate-400 w-36"></span>
               </div>
               <div className="text-center font-bold text-slate-500 text-[11px]">
-                نظام شركة أطلس المحيط للشحن والتخليص الجمركي - وثيقة رسمية معتمدة
+                نظام أطلس المحيط للتجارة العامة - وثيقة رسمية معتمدة
               </div>
               <div>
                 <span className="block font-bold">ختم الشركة:</span>
